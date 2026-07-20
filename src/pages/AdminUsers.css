@@ -1,0 +1,99 @@
+.admin-users-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cy-space-5);
+}
+
+.admin-permissions-card {
+  margin: 0;
+}
+
+.admin-permissions-wrap {
+  overflow-x: auto;
+}
+
+.admin-permissions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cy-text-sm);
+}
+
+.admin-permissions-table th,
+.admin-permissions-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--cy-border);
+  text-align: center;
+}
+
+.admin-permissions-table th:first-child,
+.admin-permissions-table td:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: var(--cy-text);
+  min-width: 180px;
+}
+
+.admin-permissions-table th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cy-text-muted);
+  background: var(--cy-surface-muted, #f8fafc);
+}
+
+.admin-permissions-cell {
+  vertical-align: middle;
+}
+
+.admin-perm-yes {
+  color: var(--cy-success);
+}
+
+.admin-perm-no {
+  color: var(--cy-text-muted);
+  opacity: 0.4;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cy-space-4);
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-field > span {
+  font-size: var(--cy-text-sm);
+  font-weight: 600;
+  color: var(--cy-text-secondary);
+}
+
+.admin-field input,
+.admin-field select {
+  padding: 10px 12px;
+  border: 1px solid var(--cy-border);
+  border-radius: var(--cy-radius-md);
+  background: var(--cy-surface);
+  font-size: var(--cy-text-md);
+  color: var(--cy-text);
+  font-family: inherit;
+}
+
+.admin-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cy-space-2);
+  padding-top: var(--cy-space-4);
+  border-top: 1px solid var(--cy-border);
+}

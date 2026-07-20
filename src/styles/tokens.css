@@ -1,0 +1,115 @@
+:root {
+  /* Exact Carryoo brand palette */
+  --cy-bg: #f8fafc;
+  --cy-surface: #ffffff;
+  --cy-primary: #2563eb;
+  --cy-primary-hover: #1d4ed8;
+  --cy-primary-soft: #eff6ff;
+  --cy-primary-ring: #93c5fd;
+
+  --cy-success: #22c55e;
+  --cy-success-bg: #f0fdf4;
+  --cy-warning: #f59e0b;
+  --cy-warning-bg: #fffbeb;
+  --cy-danger: #ef4444;
+  --cy-danger-bg: #fef2f2;
+  --cy-info: #0284c7;
+  --cy-info-bg: #f0f9ff;
+
+  --cy-text: #0f172a;
+  --cy-text-secondary: #64748b;
+  --cy-text-muted: #94a3b8;
+  --cy-text-inverse: #ffffff;
+
+  --cy-border: #e2e8f0;
+  --cy-border-strong: #cbd5e1;
+
+  --cy-slate-50: #f8fafc;
+  --cy-slate-100: #f1f5f9;
+  --cy-slate-200: #e2e8f0;
+  --cy-slate-300: #cbd5e1;
+  --cy-slate-400: #94a3b8;
+  --cy-slate-500: #64748b;
+  --cy-slate-600: #475569;
+  --cy-slate-700: #334155;
+  --cy-slate-800: #1e293b;
+  --cy-slate-900: #0f172a;
+
+  --cy-blue-50: #eff6ff;
+  --cy-blue-100: #dbeafe;
+  --cy-blue-200: #bfdbfe;
+  --cy-blue-500: #3b82f6;
+  --cy-blue-600: #2563eb;
+  --cy-blue-700: #1d4ed8;
+
+  /* Layout */
+  --cy-sidebar-width: 260px;
+  --cy-sidebar-collapsed: 72px;
+  --cy-topbar-height: 72px;
+  --cy-content-pad: 28px 32px 40px;
+  --cy-content-pad-sm: 16px;
+
+  /* Radius */
+  --cy-radius-sm: 8px;
+  --cy-radius-md: 12px;
+  --cy-radius-lg: 16px;
+  --cy-radius-card: 20px;
+  --cy-radius-full: 999px;
+
+  /* Soft shadows */
+  --cy-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --cy-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --cy-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.06);
+  --cy-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.08);
+  --cy-shadow-drawer: -8px 0 32px rgba(15, 23, 42, 0.08);
+
+  /* Spacing */
+  --cy-space-1: 4px;
+  --cy-space-2: 8px;
+  --cy-space-3: 12px;
+  --cy-space-4: 16px;
+  --cy-space-5: 20px;
+  --cy-space-6: 24px;
+  --cy-space-8: 32px;
+
+  /* Typography hierarchy */
+  --cy-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --cy-page-title: 32px;
+  --cy-section-title: 22px;
+  --cy-card-title: 18px;
+  --cy-body: 15px;
+  --cy-caption: 13px;
+  --cy-text-xs: 12px;
+  --cy-text-sm: 13px;
+  --cy-text-md: 14px;
+  --cy-text-base: 15px;
+  --cy-text-lg: 16px;
+  --cy-text-xl: 18px;
+  --cy-text-2xl: 22px;
+  --cy-text-3xl: 32px;
+  --cy-leading-tight: 1.2;
+  --cy-leading-snug: 1.35;
+  --cy-leading-normal: 1.5;
+
+  /* Motion */
+  --cy-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --cy-duration-fast: 0.15s;
+  --cy-duration: 0.22s;
+  --cy-duration-slow: 0.28s;
+  --cy-icon-stroke: 1.75;
+}
+
+[data-theme='dark'] {
+  --cy-bg: #0b1220;
+  --cy-surface: #111827;
+  --cy-text: #f8fafc;
+  --cy-text-secondary: #94a3b8;
+  --cy-text-muted: #64748b;
+  --cy-border: #1f2a3d;
+  --cy-border-strong: #334155;
+  --cy-slate-50: #111827;
+  --cy-slate-100: #1e293b;
+  --cy-primary-soft: rgba(37, 99, 235, 0.16);
+  --cy-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --cy-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+}

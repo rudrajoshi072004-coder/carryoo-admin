@@ -1,0 +1,105 @@
+.notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cy-space-5);
+}
+
+.notifications-template-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--cy-space-3);
+}
+
+.notifications-template-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--cy-border);
+  border-radius: var(--cy-radius-md);
+  background: var(--cy-surface);
+  text-align: left;
+  cursor: pointer;
+  color: var(--cy-primary);
+  transition: all var(--cy-duration-fast) var(--cy-ease);
+}
+
+.notifications-template-btn:hover {
+  border-color: var(--cy-primary);
+  background: var(--cy-primary-soft);
+}
+
+.notifications-template-btn strong {
+  display: block;
+  font-size: var(--cy-text-sm);
+  font-weight: 600;
+  color: var(--cy-text);
+}
+
+.notifications-template-btn span {
+  font-size: 11px;
+  color: var(--cy-text-muted);
+}
+
+.notifications-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--cy-text-sm);
+  font-weight: 500;
+}
+
+.notifications-compose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cy-space-4);
+}
+
+.notifications-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notifications-field > span {
+  font-size: var(--cy-text-sm);
+  font-weight: 600;
+  color: var(--cy-text-secondary);
+}
+
+.notifications-field input,
+.notifications-field select,
+.notifications-field textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--cy-border);
+  border-radius: var(--cy-radius-md);
+  background: var(--cy-surface);
+  font-size: var(--cy-text-md);
+  color: var(--cy-text);
+  font-family: inherit;
+}
+
+.notifications-field textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.notifications-compose__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cy-space-2);
+  padding-top: var(--cy-space-4);
+  border-top: 1px solid var(--cy-border);
+}
+
+@media (max-width: 900px) {
+  .notifications-template-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .notifications-template-grid {
+    grid-template-columns: 1fr;
+  }
+}

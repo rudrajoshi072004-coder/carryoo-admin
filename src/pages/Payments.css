@@ -1,0 +1,73 @@
+.payments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cy-space-4);
+}
+
+.payments__kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cy-space-4);
+}
+
+.payments .payments-search {
+  max-width: 420px;
+}
+
+.payments-table {
+  min-width: 960px;
+}
+
+.payments-amount {
+  font-weight: 700;
+  color: var(--cy-text);
+}
+
+.payments__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.payments__panel-dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 0;
+}
+
+.payments__panel-dl div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.payments__panel-dl dt {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cy-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.payments__panel-dl dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--cy-text);
+}
+
+@media (max-width: 1200px) {
+  .payments__kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .payments__kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .payments .payments-search {
+    max-width: none;
+  }
+}

@@ -1,0 +1,113 @@
+.cy-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.cy-page-header__title {
+  margin: 4px 0 0;
+  font-size: var(--cy-page-title);
+  font-weight: 700;
+  color: var(--cy-text);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.cy-page-header__subtitle {
+  margin: 6px 0 0;
+  font-size: var(--cy-body);
+  color: var(--cy-text-secondary);
+  max-width: 640px;
+}
+
+.cy-page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cy-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--cy-caption);
+  color: var(--cy-text-muted);
+}
+
+.cy-breadcrumbs__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cy-breadcrumbs a {
+  color: var(--cy-text-secondary);
+  font-weight: 500;
+}
+
+.cy-breadcrumbs a:hover {
+  color: var(--cy-primary);
+}
+
+.cy-breadcrumbs [aria-current='page'] {
+  color: var(--cy-text);
+  font-weight: 600;
+}
+
+.cy-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-top: 1px solid var(--cy-border);
+  background: var(--cy-surface);
+}
+
+.cy-pagination__meta {
+  font-size: var(--cy-caption);
+  color: var(--cy-text-secondary);
+}
+
+.cy-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cy-pagination__page {
+  font-size: var(--cy-caption);
+  font-weight: 600;
+  color: var(--cy-text);
+  min-width: 88px;
+  text-align: center;
+}
+
+.cy-pagination__btn {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--cy-border);
+  border-radius: 10px;
+  background: var(--cy-surface);
+  color: var(--cy-text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cy-pagination__btn:hover:not(:disabled) {
+  background: var(--cy-slate-50);
+}
+
+.cy-pagination__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

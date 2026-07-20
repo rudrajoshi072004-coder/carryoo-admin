@@ -1,0 +1,80 @@
+.cy-toast-stack {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 32px));
+}
+
+.cy-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--cy-surface);
+  border: 1px solid var(--cy-border);
+  border-radius: 16px;
+  box-shadow: var(--cy-shadow-lg);
+  animation: cy-toast-in 0.22s var(--cy-ease);
+}
+
+.cy-toast__icon {
+  display: flex;
+  margin-top: 1px;
+}
+
+.cy-toast--success .cy-toast__icon {
+  color: var(--cy-success);
+}
+
+.cy-toast--error .cy-toast__icon,
+.cy-toast--warning .cy-toast__icon {
+  color: var(--cy-warning);
+}
+
+.cy-toast--error .cy-toast__icon {
+  color: var(--cy-danger);
+}
+
+.cy-toast--info .cy-toast__icon {
+  color: var(--cy-primary);
+}
+
+.cy-toast__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cy-toast__body strong {
+  display: block;
+  font-size: 14px;
+  color: var(--cy-text);
+}
+
+.cy-toast__body p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--cy-text-secondary);
+}
+
+.cy-toast__close {
+  border: none;
+  background: transparent;
+  color: var(--cy-text-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+@keyframes cy-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

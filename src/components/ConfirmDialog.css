@@ -1,0 +1,167 @@
+.cy-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.4);
+  animation: cy-fade-in 0.18s var(--cy-ease);
+}
+
+.cy-modal {
+  width: min(440px, 100%);
+  background: var(--cy-surface);
+  border: 1px solid var(--cy-border);
+  border-radius: var(--cy-radius-card);
+  box-shadow: var(--cy-shadow-lg);
+  padding: 20px;
+}
+
+.cy-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.cy-modal__header h2 {
+  margin: 0;
+  font-size: var(--cy-card-title);
+  font-weight: 600;
+  color: var(--cy-text);
+}
+
+.cy-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--cy-border);
+  border-radius: 8px;
+  background: var(--cy-surface);
+  color: var(--cy-text-secondary);
+  cursor: pointer;
+}
+
+.cy-modal__desc {
+  margin: 0 0 20px;
+  font-size: var(--cy-body);
+  color: var(--cy-text-secondary);
+  line-height: 1.55;
+}
+
+.cy-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+  font-size: var(--cy-caption);
+  font-weight: 600;
+  color: var(--cy-text);
+}
+
+.cy-modal__field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--cy-border);
+  border-radius: var(--cy-radius-md);
+  background: var(--cy-surface);
+  color: var(--cy-text);
+  font-family: inherit;
+  font-size: var(--cy-body);
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.cy-modal__field textarea:focus {
+  outline: none;
+  border-color: var(--cy-primary-ring);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cy-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cy-btn--danger {
+  background: var(--cy-danger) !important;
+  border-color: var(--cy-danger) !important;
+}
+
+.cy-btn--danger:hover:not(:disabled) {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+.cy-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--cy-duration) var(--cy-ease);
+}
+
+.cy-drawer-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cy-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--cy-bg);
+  border-left: 1px solid var(--cy-border);
+  box-shadow: var(--cy-shadow-drawer);
+  transform: translateX(100%);
+  transition: transform var(--cy-duration-slow) var(--cy-ease);
+}
+
+.cy-drawer.is-open {
+  transform: translateX(0);
+}
+
+.cy-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--cy-surface);
+  border-bottom: 1px solid var(--cy-border);
+}
+
+.cy-drawer__header h2 {
+  margin: 0;
+  font-size: var(--cy-card-title);
+  font-weight: 600;
+  color: var(--cy-text);
+}
+
+.cy-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes cy-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
