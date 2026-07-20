@@ -4,8 +4,12 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# Railway sets NODE_ENV=production during build; devDependencies are required for Vite/tsc.
+ENV NODE_ENV=development
+ENV NPM_CONFIG_PRODUCTION=false
+
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY . .
 
@@ -23,6 +27,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh \
+    && sed -i 's/\r$//' /docker-entrypoint.sh \
     && rm -f /etc/nginx/conf.d/default.conf
 
 ENV PORT=8080
