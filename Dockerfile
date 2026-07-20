@@ -9,7 +9,8 @@ ENV NODE_ENV=development
 ENV NPM_CONFIG_PRODUCTION=false
 
 COPY package.json package-lock.json ./
-RUN npm ci --include=dev
+# Use npm install (not npm ci) so minor lock drift on Linux does not fail the deploy.
+RUN npm install --include=dev --no-audit --no-fund
 
 COPY . .
 
