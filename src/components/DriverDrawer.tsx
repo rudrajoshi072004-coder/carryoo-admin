@@ -74,7 +74,7 @@ export default function DriverDrawer({ driver, open, onClose }: DriverDrawerProp
             </div>
             <div>
               <h2 className="driver-drawer__name">{driver.name}</h2>
-              <p className="driver-drawer__id">{driver.id}</p>
+              <p className="driver-drawer__id">{driver.displayId ?? `DRV-${driver.id.replace(/-/g, '').slice(-6).toUpperCase()}`}</p>
             </div>
           </div>
           <div className="driver-drawer__header-actions">

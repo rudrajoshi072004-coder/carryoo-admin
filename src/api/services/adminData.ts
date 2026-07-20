@@ -72,6 +72,40 @@ function formatTimeOnly(iso?: string) {
 
 const ACTIVE_STATES = new Set(['searching', 'assigned', 'in_transit', 'picked_up', 'driver_arriving'])
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function looksLikeUuid(value?: string): boolean {
+  return Boolean(value && UUID_RE.test(value.trim()))
+}
+
+function formatPhoneDisplay(value?: string): string {
+  if (!value || looksLikeUuid(value)) return '—'
+  const digits = value.replace(/\D/g, '')
+  if (digits.length === 10) return `+91${digits}`
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`
+  if (value.startsWith('+') && digits.length >= 10) return value
+  if (digits.length >= 10) return `+${digits}`
+  return '—'
+}
+
+function sanitizeDriverName(name?: string, phone?: string, id?: string): string {
+  if (name && !looksLikeUuid(name)) return name
+  const formattedPhone = formatPhoneDisplay(phone)
+  if (formattedPhone !== '—') return formattedPhone
+  if (id) return `Driver ${id.replace(/-/g, '').slice(-6).toUpperCase()}`
+  return 'Unknown driver'
+}
+
+function formatDriverDisplayId(id: string, displayId?: string): string {
+  if (displayId) return displayId
+  return `DRV-${id.replace(/-/g, '').slice(-6).toUpperCase()}`
+}
+
+function sanitizeVehicleLabel(value?: string): string {
+  if (!value || looksLikeUuid(value)) return '—'
+  return value
+}
+
 function bookingToTripStatus(state: string): TripStatus {
   if (state === 'completed') return 'Completed'
   if (state.includes('cancel')) return 'Cancelled'
@@ -96,6 +130,7 @@ function defaultDriver(
   const name = partial.name || partial.phone
   return {
     id: partial.id,
+    displayId: partial.displayId,
     name,
     phone: partial.phone,
     email: partial.email ?? '',
@@ -178,17 +213,23 @@ function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
         year: 'numeric',
       })
     : '—'
-  const vehicleType = row.vehicle_type || row.vehicle_category || '—'
-  const plate = row.vehicle_number || row.vehicle_details?.plate || '—'
+  const rawPhone = row.phone || row.driver_phone || row.account_phone
+  const phone = formatPhoneDisplay(rawPhone)
+  const name = sanitizeDriverName(row.name, rawPhone, row.id)
+  const displayId = formatDriverDisplayId(row.id, row.display_id)
+  const vehicleType = sanitizeVehicleLabel(row.vehicle_type || row.vehicle_category)
+  const plateRaw = row.vehicle_number || row.vehicle_details?.plate
+  const plate = plateRaw && !looksLikeUuid(plateRaw) ? plateRaw : '—'
   const wallet = Number.parseFloat(row.wallet_balance ?? '0') || 0
   const trips = row.total_trips && row.total_trips > 0 ? row.total_trips : tripCount
 
   return defaultDriver({
     id: row.id,
-    name: row.name || row.phone,
-    phone: row.phone,
-    accountPhone: row.account_phone,
-    driverPhone: row.driver_phone,
+    displayId,
+    name,
+    phone,
+    accountPhone: formatPhoneDisplay(row.account_phone),
+    driverPhone: formatPhoneDisplay(row.driver_phone),
     email: row.email ?? '',
     city: row.city || 'Nashik',
     vehicleType,

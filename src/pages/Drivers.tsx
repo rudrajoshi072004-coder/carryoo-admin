@@ -281,7 +281,7 @@ export default function Drivers() {
                         </div>
                       </div>
                     </td>
-                    <td className="cy-table__mono">{driver.id}</td>
+                    <td className="cy-table__mono">{driver.displayId ?? `DRV-${driver.id.replace(/-/g, '').slice(-6).toUpperCase()}`}</td>
                     <td>{driver.phone}</td>
                     <td>
                       <div className="cy-table__primary">{driver.vehicleType}</div>

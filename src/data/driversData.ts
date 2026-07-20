@@ -25,6 +25,7 @@ export interface DriverActivity {
 
 export interface Driver {
   id: string
+  displayId?: string
   name: string
   phone: string
   accountPhone?: string

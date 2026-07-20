@@ -13,6 +13,7 @@ export type PortalOverview = {
 
 export type PortalDriverRow = {
   id: string
+  display_id?: string
   user_id: string | null
   name: string
   owner_name?: string
