@@ -69,50 +69,77 @@ export type PortalAuditLogRow = {
   created_at: string | null
 }
 
-async function tryPortal<T>(path: string, method: 'get' | 'patch' = 'get', body?: unknown): Promise<T | null> {
+async function tryPortal<T>(
+  path: string,
+  method: 'get' | 'patch' = 'get',
+  body?: unknown,
+): Promise<{ data: T | null; denied: boolean; unavailable: boolean }> {
   try {
     if (method === 'patch') {
       const { data } = await api.patch<T>(path, body)
-      return data
+      return { data, denied: false, unavailable: false }
     }
     const { data } = await api.get<T>(path)
-    return data
+    return { data, denied: false, unavailable: false }
   } catch (error) {
-    if (isForbidden(error) || (error as { response?: { status?: number } })?.response?.status === 404) {
-      return null
+    if (isForbidden(error)) {
+      return { data: null, denied: true, unavailable: false }
+    }
+    if ((error as { response?: { status?: number } })?.response?.status === 404) {
+      return { data: null, denied: false, unavailable: true }
     }
     throw error
   }
 }
 
 export async function fetchPortalOverview(): Promise<PortalOverview | null> {
-  return tryPortal<PortalOverview>('/admin/portal/overview/')
+  const result = await tryPortal<PortalOverview>('/admin/portal/overview/')
+  return result.data
 }
 
-export async function fetchPortalDrivers(): Promise<PortalDriverRow[]> {
-  const raw = await tryPortal<{ results?: PortalDriverRow[] } | PortalDriverRow[]>('/admin/portal/drivers/')
-  if (!raw) return []
-  return unwrapList<PortalDriverRow>(raw)
+export type PortalDriversResult = {
+  rows: PortalDriverRow[]
+  denied: boolean
+  unavailable: boolean
+}
+
+export async function fetchPortalDrivers(): Promise<PortalDriversResult> {
+  const result = await tryPortal<{ results?: PortalDriverRow[] } | PortalDriverRow[]>(
+    '/admin/portal/drivers/',
+  )
+  if (result.denied) {
+    return { rows: [], denied: true, unavailable: false }
+  }
+  if (result.unavailable || !result.data) {
+    return { rows: [], denied: false, unavailable: true }
+  }
+  return { rows: unwrapList<PortalDriverRow>(result.data), denied: false, unavailable: false }
 }
 
 export async function fetchPortalCustomers(): Promise<PortalCustomerRow[]> {
-  const raw = await tryPortal<{ results?: PortalCustomerRow[] } | PortalCustomerRow[]>('/admin/portal/customers/')
-  if (!raw) return []
-  return unwrapList<PortalCustomerRow>(raw)
+  const result = await tryPortal<{ results?: PortalCustomerRow[] } | PortalCustomerRow[]>(
+    '/admin/portal/customers/',
+  )
+  if (!result.data) return []
+  return unwrapList<PortalCustomerRow>(result.data)
 }
 
 export async function fetchPortalSettings(): Promise<Record<string, unknown> | null> {
-  return tryPortal<Record<string, unknown>>('/admin/portal/settings/')
+  const result = await tryPortal<Record<string, unknown>>('/admin/portal/settings/')
+  return result.data
 }
 
 export async function savePortalSettings(payload: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-  return tryPortal<Record<string, unknown>>('/admin/portal/settings/', 'patch', payload)
+  const result = await tryPortal<Record<string, unknown>>('/admin/portal/settings/', 'patch', payload)
+  return result.data
 }
 
 export async function fetchPortalAuditLogs(): Promise<PortalAuditLogRow[]> {
-  const raw = await tryPortal<{ results?: PortalAuditLogRow[] } | PortalAuditLogRow[]>('/admin/portal/audit-logs/')
-  if (!raw) return []
-  return unwrapList<PortalAuditLogRow>(raw)
+  const result = await tryPortal<{ results?: PortalAuditLogRow[] } | PortalAuditLogRow[]>(
+    '/admin/portal/audit-logs/',
+  )
+  if (!result.data) return []
+  return unwrapList<PortalAuditLogRow>(result.data)
 }
 
 export async function fetchDriverLocations(): Promise<unknown[] | null> {

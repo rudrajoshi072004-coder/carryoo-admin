@@ -10,6 +10,7 @@ import {
 import type { AuthUser } from '../api/types'
 import { clearSession, getStoredUser, persistSession } from '../api/client'
 import { loginWithPassword } from '../api/services/auth'
+import { isAdminRole } from '../utils/adminRoles'
 
 type AuthContextValue = {
   user: AuthUser | null
@@ -33,6 +34,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (phone: string, password: string) => {
     const session = await loginWithPassword(phone, password)
+    if (!isAdminRole(session.user.role)) {
+      throw new Error(
+        'This account is not an admin. Ask your team to run: python manage.py promote_admin YOUR_PHONE',
+      )
+    }
     persistSession(session.access, session.refresh, session.user)
     setUser(session.user)
   }, [])
@@ -46,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isAuthenticated: Boolean(user),
-      isAdmin: user?.role === 'admin' || user?.role === 'ops_admin',
+      isAdmin: isAdminRole(user?.role),
       loading,
       login,
       logout,

@@ -127,7 +127,7 @@ function mapPortalDriverStatus(row: PortalDriverRow): DriverStatus {
 function defaultDriver(
   partial: Partial<Driver> & Pick<Driver, 'id' | 'name' | 'phone'>,
 ): Driver {
-  const name = partial.name || partial.phone
+  const name = partial.name || 'Unknown driver'
   return {
     id: partial.id,
     displayId: partial.displayId,
@@ -273,10 +273,12 @@ function deriveDriversFromBookings(bookings: Booking[]): Driver[] {
   const map = new Map<string, { row: Partial<Driver>; trips: number; earnings: number; active: boolean }>()
 
   for (const b of bookings) {
-    const phone = b.driver_summary?.phone ?? b.driver ?? null
-    if (!phone) continue
-    const key = String(phone)
-    const name = b.driver_summary?.name ?? key
+    const rawKey = b.driver_summary?.phone ?? b.driver ?? null
+    if (!rawKey || looksLikeUuid(String(rawKey))) continue
+    const key = String(rawKey)
+    const name = sanitizeDriverName(b.driver_summary?.name, key, key)
+    const phone = formatPhoneDisplay(key)
+    if (phone === '—') continue
     const existing = map.get(key)
     const fare = Number.parseFloat(b.final_fare ?? b.estimated_fare ?? '0')
     if (existing) {
@@ -286,11 +288,12 @@ function deriveDriversFromBookings(bookings: Booking[]): Driver[] {
     } else {
       map.set(key, {
         row: {
-          id: `DRV-${key.slice(-6)}`,
+          id: formatDriverDisplayId(key),
+          displayId: formatDriverDisplayId(key),
           name,
-          phone: key,
-          vehicleType: b.vehicle_category ?? '—',
-          vehicle: b.vehicle_category ?? '—',
+          phone,
+          vehicleType: sanitizeVehicleLabel(b.vehicle_category),
+          vehicle: sanitizeVehicleLabel(b.vehicle_category),
           city: 'Nashik',
         },
         trips: 1,
@@ -438,15 +441,23 @@ async function loadBookings() {
 }
 
 export async function fetchDriversAdmin(): Promise<Driver[]> {
-  const [portalRows, bookings] = await Promise.all([fetchPortalDrivers(), loadBookings()])
-  if (portalRows.length > 0) {
+  const [portalResult, bookings] = await Promise.all([fetchPortalDrivers(), loadBookings()])
+
+  if (portalResult.denied) {
+    throw new Error(
+      'Admin access required. Sign in with a super_admin account, or ask your team to run: python manage.py promote_admin YOUR_PHONE',
+    )
+  }
+
+  if (!portalResult.unavailable) {
     const tripCounts = new Map<string, number>()
     for (const b of bookings) {
       const phone = b.driver_summary?.phone
       if (phone) tripCounts.set(String(phone), (tripCounts.get(String(phone)) ?? 0) + 1)
     }
-    return portalRows.map((row) => portalRowToDriver(row, tripCounts.get(row.phone) ?? 0))
+    return portalResult.rows.map((row) => portalRowToDriver(row, tripCounts.get(row.phone) ?? 0))
   }
+
   return deriveDriversFromBookings(bookings)
 }
 

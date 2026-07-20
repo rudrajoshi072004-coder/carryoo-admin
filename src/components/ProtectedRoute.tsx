@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { Skeleton } from './ui'
 
 export default function ProtectedRoute() {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, isAdmin, loading } = useAuth()
   const location = useLocation()
 
   if (loading) {
@@ -14,7 +14,7 @@ export default function ProtectedRoute() {
     )
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !isAdmin) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 

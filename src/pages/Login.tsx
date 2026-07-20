@@ -7,7 +7,7 @@ import { Button } from '../components/ui'
 import './Login.css'
 
 export default function Login() {
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, isAdmin } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from ?? '/'
@@ -17,10 +17,9 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (isAuthenticated) {
+  if (isAuthenticated && isAdmin) {
     return <Navigate to={from} replace />
   }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -92,7 +91,7 @@ export default function Login() {
         </form>
 
         <p className="login-footnote">
-          Use an admin account for full CRUD access. Read-only views work with any authenticated user.
+          Sign in with a super_admin, city_manager, support_agent, or finance_admin account.
         </p>
       </div>
     </div>
