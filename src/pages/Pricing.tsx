@@ -55,6 +55,23 @@ function categoryDraft(cat: VehicleCategory): Record<RateField, string> {
   }
 }
 
+function normalizeRate(value: string, label: string): string {
+  const parsed = Number.parseFloat(value.replace(/,/g, '').trim())
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a valid non-negative number.`)
+  }
+  return parsed.toFixed(2)
+}
+
+function buildRatePayload(draft: Record<RateField, string>): Record<RateField, string> {
+  return {
+    base_fare: normalizeRate(draft.base_fare, 'Base fare'),
+    per_km_rate: normalizeRate(draft.per_km_rate, 'Per km rate'),
+    minimum_fare: normalizeRate(draft.minimum_fare, 'Minimum fare'),
+    waiting_per_min: normalizeRate(draft.waiting_per_min, 'Waiting / min'),
+  }
+}
+
 export default function Pricing() {
   const { isAdmin, user } = useAuth()
   const { toast } = useToast()
@@ -128,18 +145,23 @@ export default function Pricing() {
     if (!activeCategory || !canEdit) return
     setSavingCat(true)
     try {
-      const updated = await updateVehicleCategory(activeCategory.id, draft)
+      const payload = buildRatePayload(draft)
+      const updated = await updateVehicleCategory(activeCategory.id, payload)
       setCategories((prev) => prev?.map((c) => (c.id === updated.id ? updated : c)) ?? prev)
       const next = categoryDraft(updated)
       setDraft(next)
       setSavedSnapshot(next)
       toast({
-        title: 'Rates updated',
-        description: `${updated.name} pricing saved. Customer app will use new rates on next fare quote.`,
+        title: 'Rates saved to backend',
+        description: `${updated.name} updated. Customer app fare quotes will use these rates on the next trip.`,
         tone: 'success',
       })
     } catch (err) {
-      toast({ title: 'Update failed', description: getApiErrorMessage(err), tone: 'error' })
+      toast({
+        title: 'Update failed',
+        description: err instanceof Error ? err.message : getApiErrorMessage(err),
+        tone: 'error',
+      })
     } finally {
       setSavingCat(false)
     }
@@ -248,7 +270,7 @@ export default function Pricing() {
             title={`${activeCategory.name} — default rates`}
             subtitle={
               canEdit
-                ? 'Edit the values below and click Save rates. Changes apply to fare estimates in the customer app.'
+                ? 'Saved to PATCH /vehicle-categories/ and used by POST /bookings/fare-estimate/ in the customer app.'
                 : 'These values feed POST /bookings/fare-estimate/ for this vehicle category.'
             }
           />
@@ -283,12 +305,22 @@ export default function Pricing() {
               <strong>
                 {formatINR(
                   Math.round(
-                    Number.parseFloat(draft.base_fare || activeCategory.base_fare) +
-                      Number.parseFloat(draft.per_km_rate || activeCategory.per_km_rate) * 10,
+                    Math.max(
+                      Number.parseFloat(draft.minimum_fare || activeCategory.minimum_fare || activeCategory.base_fare),
+                      Number.parseFloat(draft.base_fare || activeCategory.base_fare) +
+                        Number.parseFloat(draft.per_km_rate || activeCategory.per_km_rate) * 10,
+                    ),
                   ),
                 )}
               </strong>
             </p>
+
+            {canEdit && activeCategory.updated_at ? (
+              <p className="pricing-sync-note">
+                Last saved to backend:{' '}
+                {new Date(activeCategory.updated_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+              </p>
+            ) : null}
 
             {canEdit ? (
               <div className="pricing-fare-toolbar">

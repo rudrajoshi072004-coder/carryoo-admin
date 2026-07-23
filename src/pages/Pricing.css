@@ -9,6 +9,13 @@
   font-size: 1rem;
 }
 
+.pricing-sync-note {
+  margin: 12px 0 0;
+  font-size: var(--cy-caption);
+  color: var(--cy-success);
+  font-weight: 600;
+}
+
 .pricing-type-tabs {
   display: flex;
   flex-wrap: wrap;
