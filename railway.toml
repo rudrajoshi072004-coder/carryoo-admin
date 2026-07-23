@@ -1,5 +1,5 @@
 # Railway — Carryoo Admin panel (Vite + nginx)
-# Deploy from repository root (no subfolder needed).
+# Set service Root Directory to: Admin
 
 [build]
 builder = "DOCKERFILE"

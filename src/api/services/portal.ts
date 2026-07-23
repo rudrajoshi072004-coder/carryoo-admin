@@ -171,6 +171,14 @@ export async function fetchWalletTransactions(): Promise<unknown[]> {
   }
 }
 
+export async function updatePortalDriver(
+  driverId: string,
+  payload: { kyc_status?: string; is_online?: boolean },
+): Promise<PortalDriverRow | null> {
+  const result = await tryPortal<PortalDriverRow>(`/admin/portal/drivers/${driverId}/`, 'patch', payload)
+  return result.data
+}
+
 export async function fetchAuditLogsLegacy(): Promise<unknown[] | null> {
   try {
     const { data } = await api.get('/admin/audit-logs/')

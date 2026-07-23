@@ -20,6 +20,8 @@ interface DriverDrawerProps {
   driver: Driver | null
   open: boolean
   onClose: () => void
+  onApproveKyc?: (driver: Driver) => void | Promise<void>
+  approvingKyc?: boolean
 }
 
 function formatWallet(amount: number) {
@@ -34,7 +36,13 @@ function docStatusClass(status: string) {
   return `doc-status doc-status--${status.toLowerCase().replace(/\s+/g, '-')}`
 }
 
-export default function DriverDrawer({ driver, open, onClose }: DriverDrawerProps) {
+export default function DriverDrawer({
+  driver,
+  open,
+  onClose,
+  onApproveKyc,
+  approvingKyc = false,
+}: DriverDrawerProps) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -103,6 +111,16 @@ export default function DriverDrawer({ driver, open, onClose }: DriverDrawerProp
                   : 'Onboarding submitted — KYC review pending.'}
               </p>
             )}
+            {driver.status === 'Pending KYC' && onApproveKyc ? (
+              <button
+                type="button"
+                className="driver-drawer__approve-kyc"
+                disabled={approvingKyc}
+                onClick={() => onApproveKyc(driver)}
+              >
+                {approvingKyc ? 'Approving…' : 'Approve KYC'}
+              </button>
+            ) : null}
             <div className="drawer-grid">
               <div className="drawer-field">
                 <span className="drawer-field__label">Phone</span>

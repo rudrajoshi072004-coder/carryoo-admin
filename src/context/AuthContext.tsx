@@ -8,8 +8,14 @@ import {
   type ReactNode,
 } from 'react'
 import type { AuthUser } from '../api/types'
-import { clearSession, getStoredUser, persistSession } from '../api/client'
-import { loginWithPassword } from '../api/services/auth'
+import {
+  clearSession,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  getStoredUser,
+  persistSession,
+} from '../api/client'
+import { fetchMe, loginForAdmin } from '../api/services/auth'
 import { isAdminRole } from '../utils/adminRoles'
 
 type AuthContextValue = {
@@ -28,17 +34,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setUser(getStoredUser())
-    setLoading(false)
+    let cancelled = false
+
+    async function hydrateSession() {
+      const token = getStoredAccessToken()
+      const stored = getStoredUser()
+      if (!token || !stored) {
+        if (!cancelled) {
+          setUser(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      try {
+        const me = await fetchMe()
+        if (cancelled) return
+
+        if (!isAdminRole(me.role)) {
+          clearSession()
+          setUser(null)
+          return
+        }
+
+        const refresh = getStoredRefreshToken()
+        const synced: AuthUser = {
+          id: me.id,
+          phone: me.phone,
+          role: me.role,
+          city: me.city,
+          name: me.name,
+        }
+        if (refresh) {
+          persistSession(token, refresh, synced)
+        }
+        setUser(synced)
+      } catch {
+        if (!cancelled) {
+          clearSession()
+          setUser(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void hydrateSession()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const login = useCallback(async (phone: string, password: string) => {
-    const session = await loginWithPassword(phone, password)
-    if (!isAdminRole(session.user.role)) {
-      throw new Error(
-        'This account is not an admin. Ask your team to run: python manage.py promote_admin YOUR_PHONE',
-      )
-    }
+    const session = await loginForAdmin(phone, password)
     persistSession(session.access, session.refresh, session.user)
     setUser(session.user)
   }, [])

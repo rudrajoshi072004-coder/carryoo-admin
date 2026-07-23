@@ -113,6 +113,11 @@ export function getApiErrorMessage(error: unknown): string {
   const data = error.response?.data as Record<string, unknown> | string | undefined
 
   if (status === 403) {
+    if (data && typeof data === 'object') {
+      const errors = data.errors as Record<string, unknown> | undefined
+      if (typeof errors?.detail === 'string') return errors.detail
+      if (typeof data.detail === 'string') return data.detail
+    }
     return 'You do not have permission for this action. Sign in with an admin account.'
   }
   if (status === 401) {

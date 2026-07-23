@@ -20,6 +20,8 @@ import {
 } from '../components/ui'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { fetchDriversAdmin } from '../api/services/adminData'
+import { updatePortalDriver } from '../api/services/portal'
+import { useToast } from '../components/Toast'
 import {
   driverCities,
   driverStatuses,
@@ -56,6 +58,7 @@ function DriversSkeleton() {
 }
 
 export default function Drivers() {
+  const { toast } = useToast()
   const { data: drivers, loading, error, refetch } = useAsyncData(fetchDrivers, [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<(typeof driverStatuses)[number]>('All Status')
@@ -90,6 +93,28 @@ export default function Drivers() {
   const openDriver = (driver: Driver) => {
     setSelected(driver)
     setDrawerOpen(true)
+  }
+
+  const [approvingId, setApprovingId] = useState<string | null>(null)
+
+  const approveDriverKyc = async (driver: Driver) => {
+    setApprovingId(driver.id)
+    try {
+      await updatePortalDriver(driver.id, { kyc_status: 'approved' })
+      toast({
+        title: 'KYC approved',
+        description: `${driver.name} can now receive delivery requests.`,
+      })
+      refetch()
+    } catch (err) {
+      toast({
+        title: 'Could not approve KYC',
+        description: err instanceof Error ? err.message : 'Deploy admin portal PATCH endpoint first.',
+        tone: 'danger',
+      })
+    } finally {
+      setApprovingId(null)
+    }
   }
 
   const handleExport = () => {
@@ -318,6 +343,16 @@ export default function Drivers() {
                         >
                           <Eye size={15} strokeWidth={1.75} />
                         </button>
+                        {driver.status === 'Pending KYC' ? (
+                          <button
+                            type="button"
+                            className="cy-btn cy-btn--primary cy-btn--sm"
+                            style={{ marginLeft: 8 }}
+                            onClick={() => approveDriverKyc(driver)}
+                          >
+                            Approve KYC
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="cy-action-btn"
@@ -336,7 +371,13 @@ export default function Drivers() {
         )}
       </div>
 
-      <DriverDrawer driver={selected} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <DriverDrawer
+        driver={selected}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onApproveKyc={approveDriverKyc}
+        approvingKyc={selected ? approvingId === selected.id : false}
+      />
     </div>
   )
 }
