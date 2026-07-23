@@ -51,12 +51,6 @@
   margin-bottom: var(--cy-space-5);
 }
 
-.pricing-fare-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--cy-space-2);
-}
-
 .pricing-fare-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -75,20 +69,47 @@
   color: var(--cy-text-secondary);
 }
 
+.pricing-fare-grid--editable .pricing-fare-field__label {
+  color: var(--cy-text);
+}
+
 .pricing-fare-field__input-wrap {
   display: flex;
   align-items: center;
   gap: var(--cy-space-2);
-  height: 44px;
+  height: 48px;
   padding: 0 var(--cy-space-3);
   border: 1px solid var(--cy-border);
   border-radius: var(--cy-radius-md);
+  transition:
+    border-color var(--cy-duration-fast) var(--cy-ease),
+    box-shadow var(--cy-duration-fast) var(--cy-ease),
+    background var(--cy-duration-fast) var(--cy-ease);
+}
+
+.pricing-fare-field__input-wrap.is-readonly {
   background: var(--cy-slate-50);
   color: var(--cy-text-muted);
 }
 
+.pricing-fare-field__input-wrap.is-editable {
+  background: var(--cy-surface);
+  border-color: var(--cy-border-strong);
+  cursor: text;
+}
+
+.pricing-fare-field__input-wrap.is-editable:hover {
+  border-color: var(--cy-primary-ring);
+}
+
+.pricing-fare-field__input-wrap.is-editable:focus-within {
+  border-color: var(--cy-primary);
+  box-shadow: 0 0 0 3px var(--cy-primary-soft);
+}
+
 .pricing-fare-field__input-wrap input {
   flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   font-size: var(--cy-body);
@@ -96,17 +117,14 @@
   color: var(--cy-text);
   font-family: inherit;
   outline: none;
-  cursor: default;
 }
 
-.pricing-fare-field__input-wrap.is-editing {
-  background: var(--cy-surface);
-  border-color: var(--cy-primary-ring);
-  box-shadow: 0 0 0 3px var(--cy-primary-soft);
-}
-
-.pricing-fare-field__input-wrap.is-editing input {
+.pricing-fare-field__input-wrap.is-editable input {
   cursor: text;
+}
+
+.pricing-fare-field__input-wrap.is-readonly input {
+  cursor: default;
 }
 
 .pricing-fare-field__input-wrap input:disabled {
@@ -115,8 +133,36 @@
   -webkit-text-fill-color: var(--cy-text);
 }
 
-.pricing-fare-grid--editing .pricing-fare-field__label {
+.pricing-fare-field__edit-icon {
+  flex-shrink: 0;
+  color: var(--cy-text-muted);
+}
+
+.pricing-fare-field__input-wrap.is-editable:focus-within .pricing-fare-field__edit-icon {
   color: var(--cy-primary);
+}
+
+.pricing-fare-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cy-space-3);
+  margin-top: var(--cy-space-4);
+  padding-top: var(--cy-space-4);
+  border-top: 1px solid var(--cy-border);
+}
+
+.pricing-fare-toolbar__hint {
+  margin: 0;
+  font-size: var(--cy-caption);
+  color: var(--cy-text-secondary);
+}
+
+.pricing-fare-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cy-space-2);
 }
 
 .pricing-lower {
@@ -228,5 +274,18 @@
 @media (max-width: 640px) {
   .pricing-fare-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pricing-fare-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pricing-fare-actions {
+    width: 100%;
+  }
+
+  .pricing-fare-actions button {
+    flex: 1;
   }
 }

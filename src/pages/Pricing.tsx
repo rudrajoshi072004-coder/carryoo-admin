@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { IndianRupee, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import { IndianRupee, Pencil, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import {
@@ -27,6 +27,16 @@ import type { PricingRule, PricingRuleInput, VehicleCategory } from '../api/type
 import { formatINR } from '../lib/utils'
 import './Pricing.css'
 
+const RATE_FIELDS = ['base_fare', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const
+type RateField = (typeof RATE_FIELDS)[number]
+
+const RATE_LABELS: Record<RateField, string> = {
+  base_fare: 'Base fare',
+  per_km_rate: 'Per km rate',
+  minimum_fare: 'Minimum fare',
+  waiting_per_min: 'Waiting / min',
+}
+
 const emptyRule: PricingRuleInput = {
   name: '',
   city: 'Nashik',
@@ -36,9 +46,19 @@ const emptyRule: PricingRuleInput = {
   active: true,
 }
 
+function categoryDraft(cat: VehicleCategory): Record<RateField, string> {
+  return {
+    base_fare: cat.base_fare,
+    per_km_rate: cat.per_km_rate,
+    minimum_fare: cat.minimum_fare ?? cat.base_fare,
+    waiting_per_min: cat.waiting_per_min ?? '2.00',
+  }
+}
+
 export default function Pricing() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
   const { toast } = useToast()
+  const canEdit = isAdmin
 
   const { data: categories, loading: catLoading, error: catError, refetch: refetchCat, setData: setCategories } =
     useAsyncData(listVehicleCategories, [])
@@ -46,8 +66,18 @@ export default function Pricing() {
     useAsyncData(listPricingRules, [])
 
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [draft, setDraft] = useState<Record<string, string>>({})
-  const [editingRates, setEditingRates] = useState(false)
+  const [draft, setDraft] = useState<Record<RateField, string>>({
+    base_fare: '',
+    per_km_rate: '',
+    minimum_fare: '',
+    waiting_per_min: '',
+  })
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<RateField, string>>({
+    base_fare: '',
+    per_km_rate: '',
+    minimum_fare: '',
+    waiting_per_min: '',
+  })
   const [savingCat, setSavingCat] = useState(false)
   const [rulePanel, setRulePanel] = useState(false)
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null)
@@ -57,13 +87,10 @@ export default function Pricing() {
   useEffect(() => {
     if (!activeId && categories?.length) {
       const cat = categories[0]
+      const next = categoryDraft(cat)
       setActiveId(cat.id)
-      setDraft({
-        base_fare: cat.base_fare,
-        per_km_rate: cat.per_km_rate,
-        minimum_fare: cat.minimum_fare ?? cat.base_fare,
-        waiting_per_min: cat.waiting_per_min ?? '2.00',
-      })
+      setDraft(next)
+      setSavedSnapshot(next)
     }
   }, [categories, activeId])
 
@@ -78,51 +105,39 @@ export default function Pricing() {
     return map
   }, [categories])
 
-  const startEditCategory = (cat: VehicleCategory) => {
+  const ratesDirty = useMemo(
+    () => RATE_FIELDS.some((key) => draft[key] !== savedSnapshot[key]),
+    [draft, savedSnapshot],
+  )
+
+  const selectCategory = (cat: VehicleCategory) => {
+    const next = categoryDraft(cat)
     setActiveId(cat.id)
-    setEditingRates(false)
-    setDraft({
-      base_fare: cat.base_fare,
-      per_km_rate: cat.per_km_rate,
-      minimum_fare: cat.minimum_fare ?? cat.base_fare,
-      waiting_per_min: cat.waiting_per_min ?? '2.00',
-    })
+    setDraft(next)
+    setSavedSnapshot(next)
   }
 
-  const beginRateEdit = () => {
+  const resetDraft = () => {
     if (!activeCategory) return
-    setDraft({
-      base_fare: activeCategory.base_fare,
-      per_km_rate: activeCategory.per_km_rate,
-      minimum_fare: activeCategory.minimum_fare ?? activeCategory.base_fare,
-      waiting_per_min: activeCategory.waiting_per_min ?? '2.00',
-    })
-    setEditingRates(true)
-  }
-
-  const cancelRateEdit = () => {
-    if (!activeCategory) return
-    setDraft({
-      base_fare: activeCategory.base_fare,
-      per_km_rate: activeCategory.per_km_rate,
-      minimum_fare: activeCategory.minimum_fare ?? activeCategory.base_fare,
-      waiting_per_min: activeCategory.waiting_per_min ?? '2.00',
-    })
-    setEditingRates(false)
+    const next = categoryDraft(activeCategory)
+    setDraft(next)
+    setSavedSnapshot(next)
   }
 
   const saveCategoryRates = async () => {
-    if (!activeCategory) return
+    if (!activeCategory || !canEdit) return
     setSavingCat(true)
     try {
       const updated = await updateVehicleCategory(activeCategory.id, draft)
       setCategories((prev) => prev?.map((c) => (c.id === updated.id ? updated : c)) ?? prev)
+      const next = categoryDraft(updated)
+      setDraft(next)
+      setSavedSnapshot(next)
       toast({
         title: 'Rates updated',
         description: `${updated.name} pricing saved. Customer app will use new rates on next fare quote.`,
         tone: 'success',
       })
-      setEditingRates(false)
     } catch (err) {
       toast({ title: 'Update failed', description: getApiErrorMessage(err), tone: 'error' })
     } finally {
@@ -208,7 +223,7 @@ export default function Pricing() {
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Pricing' }]}
       />
 
-      {!isAdmin ? (
+      {!canEdit ? (
         <PermissionBanner message="View-only mode. Admin login required to change rates or pricing rules." />
       ) : null}
 
@@ -220,7 +235,7 @@ export default function Pricing() {
             role="tab"
             aria-selected={activeCategory?.id === cat.id}
             className={`pricing-type-tab ${activeCategory?.id === cat.id ? 'is-active' : ''}`}
-            onClick={() => startEditCategory(cat)}
+            onClick={() => selectCategory(cat)}
           >
             {cat.name}
           </button>
@@ -231,61 +246,67 @@ export default function Pricing() {
         <Card className="pricing-fare-section">
           <CardHeader
             title={`${activeCategory.name} — default rates`}
-            subtitle="These values feed POST /bookings/fare-estimate/ for this vehicle category."
-            action={
-              isAdmin ? (
-                editingRates ? (
-                  <div className="pricing-fare-actions">
-                    <Button variant="secondary" size="sm" onClick={cancelRateEdit} disabled={savingCat}>
-                      Cancel
-                    </Button>
-                    <Button variant="primary" size="sm" onClick={saveCategoryRates} disabled={savingCat}>
-                      <Save size={14} strokeWidth={1.75} />
-                      {savingCat ? 'Saving…' : 'Save'}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button variant="ghost" size="sm" onClick={beginRateEdit}>
-                    <Pencil size={14} strokeWidth={1.75} />
-                    Edit rates
-                  </Button>
-                )
-              ) : undefined
+            subtitle={
+              canEdit
+                ? 'Edit the values below and click Save rates. Changes apply to fare estimates in the customer app.'
+                : 'These values feed POST /bookings/fare-estimate/ for this vehicle category.'
             }
           />
           <CardBody>
-            <div className={`pricing-fare-grid ${editingRates ? 'pricing-fare-grid--editing' : ''}`}>
-              {(['base_fare', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const).map((key) => (
+            <div className={`pricing-fare-grid ${canEdit ? 'pricing-fare-grid--editable' : ''}`}>
+              {RATE_FIELDS.map((key) => (
                 <label key={key} className="pricing-fare-field">
-                  <span className="pricing-fare-field__label">
-                    {key === 'base_fare' ? 'Base fare' : key === 'per_km_rate' ? 'Per km rate' : key === 'minimum_fare' ? 'Minimum fare' : 'Waiting / min'}
-                  </span>
-                  <div className={`pricing-fare-field__input-wrap ${editingRates && isAdmin ? 'is-editing' : ''}`}>
+                  <span className="pricing-fare-field__label">{RATE_LABELS[key]}</span>
+                  <div className={`pricing-fare-field__input-wrap ${canEdit ? 'is-editable' : 'is-readonly'}`}>
                     <IndianRupee size={14} strokeWidth={1.75} aria-hidden />
                     <input
-                      type="text"
+                      type="number"
+                      min="0"
+                      step="0.01"
                       inputMode="decimal"
-                      value={draft[key] ?? activeCategory[key] ?? ''}
+                      value={draft[key] || activeCategory[key] || ''}
                       onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-                      disabled={!isAdmin || !editingRates}
-                      readOnly={!isAdmin || !editingRates}
-                      aria-readonly={!isAdmin || !editingRates}
+                      disabled={!canEdit}
+                      readOnly={!canEdit}
+                      aria-label={RATE_LABELS[key]}
                     />
+                    {canEdit ? (
+                      <Pencil size={14} strokeWidth={1.75} className="pricing-fare-field__edit-icon" aria-hidden />
+                    ) : null}
                   </div>
                 </label>
               ))}
             </div>
+
             <p className="pricing-preview">
               Sample 10 km trip:{' '}
               <strong>
                 {formatINR(
                   Math.round(
-                    Number.parseFloat(draft.base_fare ?? activeCategory.base_fare) +
-                      Number.parseFloat(draft.per_km_rate ?? activeCategory.per_km_rate) * 10,
+                    Number.parseFloat(draft.base_fare || activeCategory.base_fare) +
+                      Number.parseFloat(draft.per_km_rate || activeCategory.per_km_rate) * 10,
                   ),
                 )}
               </strong>
             </p>
+
+            {canEdit ? (
+              <div className="pricing-fare-toolbar">
+                <p className="pricing-fare-toolbar__hint">
+                  {ratesDirty ? 'You have unsaved changes.' : `Signed in as ${user?.role ?? 'admin'}. Rates are editable.`}
+                </p>
+                <div className="pricing-fare-actions">
+                  <Button variant="secondary" size="sm" onClick={resetDraft} disabled={!ratesDirty || savingCat}>
+                    <RotateCcw size={14} strokeWidth={1.75} />
+                    Reset
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={saveCategoryRates} disabled={!ratesDirty || savingCat}>
+                    <Save size={14} strokeWidth={1.75} />
+                    {savingCat ? 'Saving…' : 'Save rates'}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </CardBody>
         </Card>
       ) : null}
@@ -295,7 +316,7 @@ export default function Pricing() {
           title="City pricing rules"
           subtitle="Optional overrides per city and vehicle (advanced)"
           action={
-            isAdmin ? (
+            canEdit ? (
               <Button variant="ghost" size="sm" onClick={openCreateRule}>
                 <Plus size={14} strokeWidth={1.75} />
                 Add rule
@@ -338,7 +359,7 @@ export default function Pricing() {
                       <td>
                         <div className="cy-actions">
                           <button type="button" className="cy-action-btn" onClick={() => openEditRule(rule)}><Pencil size={14} /></button>
-                          {isAdmin ? (
+                          {canEdit ? (
                             <button type="button" className="cy-action-btn cy-action-btn--danger" onClick={() => setDeleteRule(rule)}><Trash2 size={14} /></button>
                           ) : null}
                         </div>
@@ -388,7 +409,7 @@ export default function Pricing() {
         </div>
         <div className="form-actions">
           <Button variant="secondary" onClick={() => setRulePanel(false)}>Cancel</Button>
-          <Button variant="primary" onClick={saveRule} disabled={!isAdmin}>Save rule</Button>
+          <Button variant="primary" onClick={saveRule} disabled={!canEdit}>Save rule</Button>
         </div>
       </SidePanel>
 
