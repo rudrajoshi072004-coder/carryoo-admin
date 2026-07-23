@@ -110,7 +110,7 @@ export default function Drivers() {
       toast({
         title: 'Could not approve KYC',
         description: err instanceof Error ? err.message : 'Deploy admin portal PATCH endpoint first.',
-        tone: 'danger',
+        tone: 'error',
       })
     } finally {
       setApprovingId(null)
