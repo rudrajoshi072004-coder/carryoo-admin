@@ -47,6 +47,7 @@ export default function Pricing() {
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, string>>({})
+  const [editingRates, setEditingRates] = useState(false)
   const [savingCat, setSavingCat] = useState(false)
   const [rulePanel, setRulePanel] = useState(false)
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null)
@@ -79,12 +80,35 @@ export default function Pricing() {
 
   const startEditCategory = (cat: VehicleCategory) => {
     setActiveId(cat.id)
+    setEditingRates(false)
     setDraft({
       base_fare: cat.base_fare,
       per_km_rate: cat.per_km_rate,
       minimum_fare: cat.minimum_fare ?? cat.base_fare,
       waiting_per_min: cat.waiting_per_min ?? '2.00',
     })
+  }
+
+  const beginRateEdit = () => {
+    if (!activeCategory) return
+    setDraft({
+      base_fare: activeCategory.base_fare,
+      per_km_rate: activeCategory.per_km_rate,
+      minimum_fare: activeCategory.minimum_fare ?? activeCategory.base_fare,
+      waiting_per_min: activeCategory.waiting_per_min ?? '2.00',
+    })
+    setEditingRates(true)
+  }
+
+  const cancelRateEdit = () => {
+    if (!activeCategory) return
+    setDraft({
+      base_fare: activeCategory.base_fare,
+      per_km_rate: activeCategory.per_km_rate,
+      minimum_fare: activeCategory.minimum_fare ?? activeCategory.base_fare,
+      waiting_per_min: activeCategory.waiting_per_min ?? '2.00',
+    })
+    setEditingRates(false)
   }
 
   const saveCategoryRates = async () => {
@@ -98,6 +122,7 @@ export default function Pricing() {
         description: `${updated.name} pricing saved. Customer app will use new rates on next fare quote.`,
         tone: 'success',
       })
+      setEditingRates(false)
     } catch (err) {
       toast({ title: 'Update failed', description: getApiErrorMessage(err), tone: 'error' })
     } finally {
@@ -181,14 +206,6 @@ export default function Pricing() {
         title="Pricing & Fares"
         subtitle="Set per-vehicle rates used by the customer app fare calculator."
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Pricing' }]}
-        actions={
-          activeCategory && isAdmin ? (
-            <Button variant="primary" onClick={saveCategoryRates} disabled={savingCat}>
-              <Save size={16} strokeWidth={1.75} />
-              {savingCat ? 'Saving…' : 'Save rates'}
-            </Button>
-          ) : undefined
-        }
       />
 
       {!isAdmin ? (
@@ -215,21 +232,44 @@ export default function Pricing() {
           <CardHeader
             title={`${activeCategory.name} — default rates`}
             subtitle="These values feed POST /bookings/fare-estimate/ for this vehicle category."
+            action={
+              isAdmin ? (
+                editingRates ? (
+                  <div className="pricing-fare-actions">
+                    <Button variant="secondary" size="sm" onClick={cancelRateEdit} disabled={savingCat}>
+                      Cancel
+                    </Button>
+                    <Button variant="primary" size="sm" onClick={saveCategoryRates} disabled={savingCat}>
+                      <Save size={14} strokeWidth={1.75} />
+                      {savingCat ? 'Saving…' : 'Save'}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={beginRateEdit}>
+                    <Pencil size={14} strokeWidth={1.75} />
+                    Edit rates
+                  </Button>
+                )
+              ) : undefined
+            }
           />
           <CardBody>
-            <div className="pricing-fare-grid">
+            <div className={`pricing-fare-grid ${editingRates ? 'pricing-fare-grid--editing' : ''}`}>
               {(['base_fare', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const).map((key) => (
                 <label key={key} className="pricing-fare-field">
                   <span className="pricing-fare-field__label">
                     {key === 'base_fare' ? 'Base fare' : key === 'per_km_rate' ? 'Per km rate' : key === 'minimum_fare' ? 'Minimum fare' : 'Waiting / min'}
                   </span>
-                  <div className="pricing-fare-field__input-wrap">
+                  <div className={`pricing-fare-field__input-wrap ${editingRates && isAdmin ? 'is-editing' : ''}`}>
                     <IndianRupee size={14} strokeWidth={1.75} aria-hidden />
                     <input
                       type="text"
+                      inputMode="decimal"
                       value={draft[key] ?? activeCategory[key] ?? ''}
                       onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-                      disabled={!isAdmin}
+                      disabled={!isAdmin || !editingRates}
+                      readOnly={!isAdmin || !editingRates}
+                      aria-readonly={!isAdmin || !editingRates}
                     />
                   </div>
                 </label>

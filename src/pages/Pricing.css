@@ -51,6 +51,12 @@
   margin-bottom: var(--cy-space-5);
 }
 
+.pricing-fare-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cy-space-2);
+}
+
 .pricing-fare-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -91,6 +97,26 @@
   font-family: inherit;
   outline: none;
   cursor: default;
+}
+
+.pricing-fare-field__input-wrap.is-editing {
+  background: var(--cy-surface);
+  border-color: var(--cy-primary-ring);
+  box-shadow: 0 0 0 3px var(--cy-primary-soft);
+}
+
+.pricing-fare-field__input-wrap.is-editing input {
+  cursor: text;
+}
+
+.pricing-fare-field__input-wrap input:disabled {
+  color: var(--cy-text);
+  opacity: 1;
+  -webkit-text-fill-color: var(--cy-text);
+}
+
+.pricing-fare-grid--editing .pricing-fare-field__label {
+  color: var(--cy-primary);
 }
 
 .pricing-lower {
