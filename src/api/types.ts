@@ -65,8 +65,12 @@ export type PricingRule = {
   name: string
   city?: string | null
   vehicle_category?: string | null
+  trip_type?: 'within_city' | 'outstation' | null
+  min_distance_km?: string | null
+  max_distance_km?: string | null
   base_fare?: string
   per_km_rate?: string
+  minimum_fare?: string | null
   surge_multiplier?: string
   active?: boolean
   created_at?: string
@@ -76,8 +80,12 @@ export type PricingRuleInput = {
   name: string
   city?: string
   vehicle_category?: string
+  trip_type?: 'within_city' | 'outstation'
+  min_distance_km?: string | null
+  max_distance_km?: string | null
   base_fare?: string
   per_km_rate?: string
+  minimum_fare?: string | null
   surge_multiplier?: string
   active?: boolean
 }
@@ -103,9 +111,20 @@ export type Booking = {
 
 export type ServiceZone = {
   id: string
-  name: string
-  city?: string
+  city_name: string
+  zone_name: string
   active?: boolean
+  service_radius_km?: string
+  dispatch_radius_km?: string
+}
+
+export type ServiceZoneInput = {
+  city_name: string
+  zone_name: string
+  active?: boolean
+  service_radius_km?: string
+  dispatch_radius_km?: string
+  polygon_points?: number[][]
 }
 
 export type SupportTicket = {
