@@ -24,6 +24,7 @@ import {
 } from '../api/services/vehicleCategories'
 import type { VehicleCategory, VehicleCategoryInput } from '../api/types'
 import { exportCsv, formatINR, paginate } from '../lib/utils'
+import { customerVehicleLabel, isCustomerAppVehicle, pickCustomerAppVehicles } from '../lib/customerVehicles'
 import './Vehicles.css'
 
 const PAGE_SIZE = 10
@@ -69,23 +70,33 @@ export default function Vehicles() {
 
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [showUnused, setShowUnused] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const [editing, setEditing] = useState<VehicleCategory | null>(null)
   const [form, setForm] = useState<VehicleCategoryInput>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<VehicleCategory | null>(null)
 
+  const customerAppCategories = useMemo(
+    () => pickCustomerAppVehicles(categories ?? []),
+    [categories],
+  )
+  const unusedCategories = useMemo(
+    () => (categories ?? []).filter((c) => !isCustomerAppVehicle(c.name)),
+    [categories],
+  )
+
   const filtered = useMemo(() => {
-    if (!categories) return []
+    const source = showUnused ? unusedCategories : customerAppCategories
     const q = search.trim().toLowerCase()
-    return categories.filter(
-      (c) => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q),
+    return source.filter(
+      (c) => !q || customerVehicleLabel(c.name).toLowerCase().includes(q) || c.name.toLowerCase().includes(q),
     )
-  }, [categories, search])
+  }, [customerAppCategories, unusedCategories, search, showUnused])
 
   const paginated = useMemo(() => paginate(filtered, page, PAGE_SIZE), [filtered, page])
 
-  const activeCount = categories?.filter((c) => c.active).length ?? 0
+  const activeCount = customerAppCategories.filter((c) => c.active).length
 
   const openCreate = () => {
     setEditing(null)
@@ -188,7 +199,7 @@ export default function Vehicles() {
     <div className="vehicles-page cy-page">
       <PageHeader
         title="Vehicle Types"
-        subtitle="Manage categories shown in customer and driver apps. Changes apply on next app refresh."
+        subtitle="The customer app shows only 2 Wheeler, Scooty, 3 Wheeler, and Tata ACE. Other types stay hidden from customers."
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Vehicle Types' }]}
         actions={
           <>
@@ -213,16 +224,16 @@ export default function Vehicles() {
           <CardBody>
             <div className="vehicles-type-card__head">
               <span className="vehicles-type-card__icon"><Truck size={20} /></span>
-              <div><h3>Total types</h3><span>On platform</span></div>
+              <div><h3>Customer app</h3><span>2W, Scooty, 3W, Tata ACE</span></div>
             </div>
-            <strong className="vehicles-stat-big">{categories.length}</strong>
+            <strong className="vehicles-stat-big">{customerAppCategories.length}</strong>
           </CardBody>
         </Card>
         <Card className="vehicles-type-card">
           <CardBody>
             <div className="vehicles-type-card__head">
               <span className="vehicles-type-card__icon"><Bike size={20} /></span>
-              <div><h3>Active</h3><span>Visible in apps</span></div>
+              <div><h3>Active</h3><span>Shown to customers</span></div>
             </div>
             <strong className="vehicles-stat-big">{activeCount}</strong>
           </CardBody>
@@ -230,12 +241,24 @@ export default function Vehicles() {
       </div>
 
       <div className="cy-page__toolbar">
-        <SearchInput
-          value={search}
-          onChange={(v) => { setSearch(v); setPage(1) }}
-          placeholder="Search vehicle type…"
-          className="vehicles-search"
-        />
+        <div className="cy-page__toolbar-left">
+          <SearchInput
+            value={search}
+            onChange={(v) => { setSearch(v); setPage(1) }}
+            placeholder="Search vehicle type…"
+            className="vehicles-search"
+          />
+        </div>
+        {unusedCategories.length > 0 ? (
+          <div className="cy-page__toolbar-right">
+            <Button
+              variant={showUnused ? 'primary' : 'secondary'}
+              onClick={() => { setShowUnused((prev) => !prev); setPage(1) }}
+            >
+              {showUnused ? 'Show customer vehicles' : `Show unused (${unusedCategories.length})`}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="cy-table-card">
@@ -270,8 +293,10 @@ export default function Vehicles() {
                           <div className="vehicles-name-cell">
                             <span className="vehicles-type-card__icon"><Icon size={16} /></span>
                             <div>
-                              <div className="cy-table__primary">{item.name}</div>
-                              <div className="cy-table__secondary cy-table__mono">{item.id.slice(0, 8)}…</div>
+                              <div className="cy-table__primary">
+                                {showUnused ? item.name : customerVehicleLabel(item.name)}
+                              </div>
+                              <div className="cy-table__secondary">{item.name}</div>
                             </div>
                           </div>
                         </td>

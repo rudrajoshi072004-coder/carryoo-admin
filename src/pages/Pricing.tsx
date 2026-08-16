@@ -26,6 +26,11 @@ import {
 import { listServiceZones, updateServiceZone } from '../api/services/serviceZones'
 import type { PricingRule, PricingRuleInput, ServiceZone, VehicleCategory } from '../api/types'
 import { formatINR } from '../lib/utils'
+import {
+  customerVehicleLabel,
+  pickCustomerAppVehicles,
+  usesTripTypePricing,
+} from '../lib/customerVehicles'
 import './Pricing.css'
 
 const RATE_FIELDS = ['base_fare', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const
@@ -75,10 +80,8 @@ function buildRatePayload(draft: Record<RateField, string>): Record<RateField, s
   }
 }
 
-const TRIP_TYPED_SLUGS = new Set(['mini tempo', 'pickup truck', '3-wheeler', '4-wheeler'])
-
 function categoryUsesTripType(name: string): boolean {
-  return TRIP_TYPED_SLUGS.has(name.trim().toLowerCase())
+  return usesTripTypePricing(name)
 }
 
 function sortOutstationRules(rows: PricingRule[]): PricingRule[] {
@@ -128,19 +131,26 @@ export default function Pricing() {
   const [ruleForm, setRuleForm] = useState<PricingRuleInput>(emptyRule)
   const [deleteRule, setDeleteRule] = useState<PricingRule | null>(null)
 
+  const customerCategories = useMemo(
+    () => pickCustomerAppVehicles(categories ?? []),
+    [categories],
+  )
+
   useEffect(() => {
-    if (!activeId && categories?.length) {
-      const cat = categories[0]
+    if (!customerCategories.length) return
+    const stillVisible = activeId ? customerCategories.some((c) => c.id === activeId) : false
+    if (!activeId || !stillVisible) {
+      const cat = customerCategories[0]
       const next = categoryDraft(cat)
       setActiveId(cat.id)
       setDraft(next)
       setSavedSnapshot(next)
     }
-  }, [categories, activeId])
+  }, [customerCategories, activeId])
 
   const activeCategory = useMemo(
-    () => categories?.find((c) => c.id === activeId) ?? categories?.[0] ?? null,
-    [categories, activeId],
+    () => customerCategories.find((c) => c.id === activeId) ?? customerCategories[0] ?? null,
+    [customerCategories, activeId],
   )
 
   const categoryMap = useMemo(() => {
@@ -220,7 +230,7 @@ export default function Pricing() {
       setSavedSnapshot(next)
       toast({
         title: 'Rates saved to backend',
-        description: `${updated.name} updated. Customer app fare quotes will use these rates on the next trip.`,
+        description: `${customerVehicleLabel(updated.name)} updated. Customer app fare quotes will use these rates on the next trip.`,
         tone: 'success',
       })
     } catch (err) {
@@ -379,7 +389,11 @@ export default function Pricing() {
               <tr key={rule.id}>
                 <td className="cy-table__primary">{rule.name}</td>
                 <td>{rule.city ?? '—'}</td>
-                <td>{rule.vehicle_category ? categoryMap.get(rule.vehicle_category)?.name ?? rule.vehicle_category.slice(0, 8) : '—'}</td>
+                <td>
+                  {rule.vehicle_category
+                    ? customerVehicleLabel(categoryMap.get(rule.vehicle_category)?.name ?? rule.vehicle_category.slice(0, 8))
+                    : '—'}
+                </td>
                 <td>{rule.trip_type === 'outstation' ? 'Outstation' : 'Within city'}</td>
                 <td className="cy-table__mono">
                   {rule.trip_type === 'outstation'
@@ -409,7 +423,7 @@ export default function Pricing() {
     <div className="pricing-page cy-page">
       <PageHeader
         title="Pricing & Fares"
-        subtitle="Edit within-city default rates, outstation distance slabs, and service radius for 3W, 4W, and truck categories."
+        subtitle="Same four vehicles as the customer app: 2 Wheeler, Scooty, 3 Wheeler, and Tata ACE."
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Pricing' }]}
       />
 
@@ -418,7 +432,7 @@ export default function Pricing() {
       ) : null}
 
       <div className="pricing-type-tabs" role="tablist">
-        {categories.map((cat) => (
+        {customerCategories.map((cat) => (
           <button
             key={cat.id}
             type="button"
@@ -427,8 +441,8 @@ export default function Pricing() {
             className={`pricing-type-tab ${activeCategory?.id === cat.id ? 'is-active' : ''}`}
             onClick={() => selectCategory(cat)}
           >
-            {cat.name}
-            {(outstationSlabCountByCategory.get(cat.id) ?? 0) > 0 ? (
+            {customerVehicleLabel(cat.name)}
+            {categoryUsesTripType(cat.name) && (outstationSlabCountByCategory.get(cat.id) ?? 0) > 0 ? (
               <span className="pricing-type-tab__badge">{outstationSlabCountByCategory.get(cat.id)}</span>
             ) : null}
           </button>
@@ -438,7 +452,7 @@ export default function Pricing() {
       {activeCategory ? (
         <Card className="pricing-fare-section">
           <CardHeader
-            title={`${activeCategory.name} — within city rates`}
+            title={`${customerVehicleLabel(activeCategory.name)} — within city rates`}
             subtitle={
               canEdit
                 ? 'Used when the customer picks Within City. Optional city rules below can override these defaults.'
@@ -575,10 +589,11 @@ export default function Pricing() {
         </CardBody>
       </Card>
 
+      {activeCategory && categoryUsesTripType(activeCategory.name) ? (
       <Card className="pricing-coupons-card">
         <CardHeader
-          title={activeCategory ? `${activeCategory.name} — outstation slabs` : 'Outstation distance slabs'}
-          subtitle="One per-km rate applies to the full trip distance. Used when the customer selects Outstation (3W, 4W, mini tempo, pickup)."
+          title={`${customerVehicleLabel(activeCategory.name)} — outstation slabs`}
+          subtitle="One per-km rate applies to the full trip distance. Used when the customer selects Outstation."
           action={
             canEdit ? (
               <Button variant="ghost" size="sm" onClick={() => openCreateRule('outstation')}>
@@ -591,17 +606,16 @@ export default function Pricing() {
         <CardBody className="pricing-coupons-body">
           {renderRulesTable(
             outstationRules,
-            activeCategory ? `No outstation slabs for ${activeCategory.name}` : 'No outstation slabs',
-            activeCategory
-              ? `Add distance slabs for ${activeCategory.name}, or run seed_outstation_pricing on the backend.`
-              : 'Select a vehicle tab above, then add slabs or run seed_outstation_pricing on the backend.',
+            `No outstation slabs for ${customerVehicleLabel(activeCategory.name)}`,
+            `Add distance slabs for ${customerVehicleLabel(activeCategory.name)}, or run seed_outstation_pricing on the backend.`,
           )}
         </CardBody>
       </Card>
+      ) : null}
 
       <Card className="pricing-coupons-card">
         <CardHeader
-          title={activeCategory ? `${activeCategory.name} — within city overrides` : 'Within city pricing rules'}
+          title={activeCategory ? `${customerVehicleLabel(activeCategory.name)} — within city overrides` : 'Within city pricing rules'}
           subtitle="Optional per-city overrides. If none exist, the within-city rates card above is used."
           action={
             canEdit ? (
@@ -615,7 +629,7 @@ export default function Pricing() {
         <CardBody className="pricing-coupons-body">
           {renderRulesTable(
             withinCityRules,
-            activeCategory ? `No within-city overrides for ${activeCategory.name}` : 'No within-city pricing rules',
+            activeCategory ? `No within-city overrides for ${customerVehicleLabel(activeCategory.name)}` : 'No within-city pricing rules',
             'Default within-city rates from the card above are used unless you add an override here.',
           )}
         </CardBody>
@@ -642,7 +656,9 @@ export default function Pricing() {
             <span>Vehicle category</span>
             <select value={ruleForm.vehicle_category ?? ''} onChange={(e) => setRuleForm({ ...ruleForm, vehicle_category: e.target.value || undefined })}>
               <option value="">Select vehicle</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {customerCategories.map((c) => (
+                <option key={c.id} value={c.id}>{customerVehicleLabel(c.name)}</option>
+              ))}
             </select>
           </label>
           {ruleForm.trip_type === 'outstation' ? (
