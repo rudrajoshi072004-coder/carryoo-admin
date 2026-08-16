@@ -72,8 +72,60 @@
   background: rgba(255, 255, 255, 0.28);
 }
 
+.pricing-rate-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--cy-space-4);
+  margin-bottom: var(--cy-space-4);
+}
+
+.pricing-radius-card {
+  margin-bottom: var(--cy-space-4);
+}
+
+.pricing-radius-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cy-space-4);
+}
+
+.pricing-radius-label {
+  margin: 0;
+  font-size: var(--cy-body);
+  font-weight: 700;
+  color: var(--cy-text);
+}
+
+.pricing-radius-hint {
+  margin: 4px 0 0;
+  font-size: var(--cy-caption);
+  color: var(--cy-text-secondary);
+}
+
+.pricing-radius-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--cy-space-3);
+}
+
+.pricing-radius-controls .pricing-fare-field__input-wrap {
+  width: 140px;
+}
+
+.pricing-radius-unit {
+  font-size: var(--cy-caption);
+  font-weight: 700;
+  color: var(--cy-text-secondary);
+}
+
 .pricing-fare-section {
   margin-bottom: var(--cy-space-5);
+}
+
+.pricing-rate-panels .pricing-fare-section {
+  margin-bottom: 0;
 }
 
 .pricing-fare-grid {
@@ -292,6 +344,10 @@
 
 @media (max-width: 1100px) {
   .pricing-lower {
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-rate-panels {
     grid-template-columns: 1fr;
   }
 }
