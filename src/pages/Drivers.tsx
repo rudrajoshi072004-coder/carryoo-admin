@@ -8,6 +8,7 @@ import {
   Eye,
   Filter,
   Users,
+  X,
 } from 'lucide-react'
 import DriverDrawer from '../components/DriverDrawer'
 import { PageHeader } from '../components/PageHeader'
@@ -20,7 +21,8 @@ import {
 } from '../components/ui'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { fetchDriversAdmin } from '../api/services/adminData'
-import { updatePortalDriver } from '../api/services/portal'
+import { createPortalDriver, updatePortalDriver } from '../api/services/portal'
+import { getApiErrorMessage } from '../api/client'
 import { useToast } from '../components/Toast'
 import {
   driverCities,
@@ -30,6 +32,7 @@ import {
   type DriverStatus,
 } from '../data/driversData'
 import './Drivers.css'
+import '../components/ConfirmDialog.css'
 
 function formatWallet(amount: number) {
   return `₹${amount.toLocaleString('en-IN')}`
@@ -96,6 +99,53 @@ export default function Drivers() {
   }
 
   const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addPhone, setAddPhone] = useState('')
+  const [addPassword, setAddPassword] = useState('')
+  const [addConfirmPassword, setAddConfirmPassword] = useState('')
+  const [adding, setAdding] = useState(false)
+
+  const openAddDriver = () => {
+    setAddPhone('')
+    setAddPassword('')
+    setAddConfirmPassword('')
+    setAddOpen(true)
+  }
+
+  const handleAddDriver = async () => {
+    const phone = addPhone.trim()
+    const password = addPassword
+    if (!phone) {
+      toast({ title: 'Phone required', description: 'Enter the driver phone number.', tone: 'error' })
+      return
+    }
+    if (password.length < 6) {
+      toast({ title: 'Password too short', description: 'Use at least 6 characters.', tone: 'error' })
+      return
+    }
+    if (password !== addConfirmPassword) {
+      toast({ title: 'Passwords do not match', description: 'Enter the same password in both fields.', tone: 'error' })
+      return
+    }
+    setAdding(true)
+    try {
+      const created = await createPortalDriver({ phone, password })
+      setAddOpen(false)
+      toast({
+        title: 'Driver added',
+        description: `${created.phone || phone} can now log in on the driver app with this password.`,
+      })
+      refetch()
+    } catch (err) {
+      toast({
+        title: 'Could not add driver',
+        description: getApiErrorMessage(err),
+        tone: 'error',
+      })
+    } finally {
+      setAdding(false)
+    }
+  }
 
   const approveDriverKyc = async (driver: Driver) => {
     setApprovingId(driver.id)
@@ -220,7 +270,7 @@ export default function Drivers() {
             <Download size={16} strokeWidth={1.75} />
             Export
           </Button>
-          <Button variant="primary">
+          <Button variant="primary" onClick={openAddDriver}>
             <Plus size={16} strokeWidth={1.75} />
             Add Driver
           </Button>
@@ -378,6 +428,85 @@ export default function Drivers() {
         onApproveKyc={approveDriverKyc}
         approvingKyc={selected ? approvingId === selected.id : false}
       />
+
+      {addOpen ? (
+        <div className="cy-modal-overlay" onClick={() => !adding && setAddOpen(false)}>
+          <form
+            className="cy-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-driver-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleAddDriver()
+            }}
+          >
+            <div className="cy-modal__header">
+              <h2 id="add-driver-title">Add driver</h2>
+              <button
+                type="button"
+                className="cy-modal__close"
+                onClick={() => setAddOpen(false)}
+                disabled={adding}
+                aria-label="Close"
+              >
+                <X size={16} strokeWidth={1.75} />
+              </button>
+            </div>
+            <p className="cy-modal__desc">
+              Create a driver account. They can log in on the driver app with this phone number and password.
+            </p>
+            <label className="cy-modal__field">
+              <span>Phone number</span>
+              <input
+                type="tel"
+                value={addPhone}
+                onChange={(e) => setAddPhone(e.target.value)}
+                placeholder="9175504990"
+                autoComplete="tel"
+                autoFocus
+                required
+                disabled={adding}
+              />
+            </label>
+            <label className="cy-modal__field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={addPassword}
+                onChange={(e) => setAddPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                autoComplete="new-password"
+                required
+                minLength={6}
+                disabled={adding}
+              />
+            </label>
+            <label className="cy-modal__field">
+              <span>Confirm password</span>
+              <input
+                type="password"
+                value={addConfirmPassword}
+                onChange={(e) => setAddConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                autoComplete="new-password"
+                required
+                minLength={6}
+                disabled={adding}
+              />
+            </label>
+            <div className="cy-modal__actions">
+              <Button type="button" variant="secondary" onClick={() => setAddOpen(false)} disabled={adding}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={adding}>
+                {adding ? 'Adding…' : 'Add driver'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   )
 }

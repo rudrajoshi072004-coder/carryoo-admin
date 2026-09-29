@@ -64,6 +64,7 @@
   color: var(--cy-text);
 }
 
+.cy-modal__field input,
 .cy-modal__field textarea {
   width: 100%;
   padding: 10px 12px;
@@ -74,10 +75,19 @@
   font-family: inherit;
   font-size: var(--cy-body);
   line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.cy-modal__field textarea {
   resize: vertical;
   min-height: 80px;
 }
 
+.cy-modal__field input {
+  min-height: 42px;
+}
+
+.cy-modal__field input:focus,
 .cy-modal__field textarea:focus {
   outline: none;
   border-color: var(--cy-primary-ring);

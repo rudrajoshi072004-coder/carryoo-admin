@@ -171,6 +171,17 @@ export async function fetchWalletTransactions(): Promise<unknown[]> {
   }
 }
 
+export async function createPortalDriver(payload: {
+  phone: string
+  password: string
+}): Promise<PortalDriverRow> {
+  const { data } = await api.post('/admin/portal/drivers/', payload)
+  if (data && typeof data === 'object' && (data as { data?: PortalDriverRow }).data) {
+    return (data as { data: PortalDriverRow }).data
+  }
+  return data as PortalDriverRow
+}
+
 export async function updatePortalDriver(
   driverId: string,
   payload: { kyc_status?: string; is_online?: boolean },
