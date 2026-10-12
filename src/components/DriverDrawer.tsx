@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   X,
   Star,
@@ -12,8 +12,10 @@ import {
   Building2,
   Activity,
   Route,
+  Eye,
 } from 'lucide-react'
-import type { Driver } from '../data/driversData'
+import DocumentPreviewModal from './DocumentPreviewModal'
+import type { Driver, DriverDocument } from '../data/driversData'
 import './DriverDrawer.css'
 
 interface DriverDrawerProps {
@@ -43,6 +45,8 @@ export default function DriverDrawer({
   onApproveKyc,
   approvingKyc = false,
 }: DriverDrawerProps) {
+  const [selectedDoc, setSelectedDoc] = useState<DriverDocument | null>(null)
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -178,6 +182,7 @@ export default function DriverDrawer({
                     <th>Number</th>
                     <th>Expiry</th>
                     <th>Status</th>
+                    <th>Preview</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,6 +193,17 @@ export default function DriverDrawer({
                       <td>{doc.expiry}</td>
                       <td>
                         <span className={docStatusClass(doc.status)}>{doc.status}</span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="drawer-doc-view-btn"
+                          title={`Inspect ${doc.type}`}
+                          onClick={() => setSelectedDoc(doc)}
+                        >
+                          <Eye size={13} />
+                          <span>View</span>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -403,6 +419,28 @@ export default function DriverDrawer({
           </section>
         </div>
       </aside>
+
+      <DocumentPreviewModal
+        open={Boolean(selectedDoc)}
+        onClose={() => setSelectedDoc(null)}
+        title={selectedDoc ? `${selectedDoc.type} · ${driver.name}` : 'Document Preview'}
+        subtitle={`Driver: ${driver.name} (${driver.displayId ?? driver.id})`}
+        fileUrl={selectedDoc?.url}
+        status={selectedDoc?.status}
+        metadata={
+          selectedDoc
+            ? [
+                { label: 'Document Type', value: selectedDoc.type },
+                { label: 'Document Number', value: selectedDoc.number },
+                { label: 'Status', value: selectedDoc.status },
+                { label: 'Expiry Date', value: selectedDoc.expiry },
+                { label: 'Driver Name', value: driver.name },
+                { label: 'Driver Phone', value: driver.phone },
+                { label: 'Vehicle', value: driver.vehicle },
+              ]
+            : []
+        }
+      />
     </>
   )
 }

@@ -1,0 +1,349 @@
+.doc-modal-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.doc-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(4px);
+  animation: cy-fade-in 0.2s ease-out;
+}
+
+.doc-modal-window {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(1200px, 96vw);
+  height: min(860px, 90vh);
+  background: var(--cy-surface, #ffffff);
+  border: 1px solid var(--cy-border, #e2e8f0);
+  border-radius: var(--cy-radius-card, 14px);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  animation: cy-scale-in 0.2s ease-out;
+}
+
+@keyframes cy-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Header */
+.doc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--cy-surface, #ffffff);
+  border-bottom: 1px solid var(--cy-border, #e2e8f0);
+  gap: 16px;
+}
+
+.doc-modal-header__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.doc-modal-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.doc-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--cy-text, #0f172a);
+}
+
+.doc-modal-subtitle {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--cy-text-secondary, #64748b);
+}
+
+/* Controls Toolbar */
+.doc-modal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.doc-modal-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--cy-bg, #f8fafc);
+  border: 1px solid var(--cy-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.doc-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--cy-text-secondary, #475569);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.doc-control-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--cy-text, #0f172a);
+}
+
+.doc-control-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.doc-control-btn--close {
+  background: var(--cy-bg, #f1f5f9);
+  color: var(--cy-text, #334155);
+}
+
+.doc-control-btn--close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.doc-control-btn--link {
+  background: var(--cy-bg, #f1f5f9);
+}
+
+.doc-zoom-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--cy-text-secondary, #64748b);
+  min-width: 44px;
+  text-align: center;
+}
+
+/* Content Area */
+.doc-modal-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.doc-modal-canvas {
+  flex: 1;
+  background: #0f172a;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  user-select: none;
+}
+
+.doc-image-viewport {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 40px;
+}
+
+.doc-preview-image {
+  max-width: 85%;
+  max-height: 75vh;
+  object-fit: contain;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.doc-pdf-container {
+  width: 100%;
+  height: 100%;
+}
+
+.doc-pdf-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #ffffff;
+}
+
+/* Loading & Empty states */
+.doc-canvas-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.doc-spin {
+  animation: cy-spin 1s linear infinite;
+}
+
+@keyframes cy-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.doc-canvas-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  max-width: 420px;
+  padding: 32px;
+  color: #e2e8f0;
+}
+
+.doc-empty-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  margin-bottom: 16px;
+}
+
+.doc-canvas-empty h3 {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.doc-canvas-empty p {
+  margin: 0 0 16px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.doc-empty-retry-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #38bdf8;
+  font-size: 0.8125rem;
+  text-decoration: underline;
+}
+
+/* Sidebar */
+.doc-modal-sidebar {
+  width: 320px;
+  background: var(--cy-surface, #ffffff);
+  border-left: 1px solid var(--cy-border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow-y: auto;
+  padding: 24px;
+  gap: 24px;
+}
+
+.doc-modal-meta-title {
+  margin: 0 0 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cy-text-secondary, #64748b);
+}
+
+.doc-modal-meta-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.doc-modal-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--cy-border, #f1f5f9);
+}
+
+.doc-modal-meta-label {
+  font-size: 0.75rem;
+  color: var(--cy-text-secondary, #94a3b8);
+}
+
+.doc-modal-meta-val {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--cy-text, #0f172a);
+}
+
+.doc-modal-action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-approve-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.doc-reject-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #dc2626 !important;
+  border-color: #fecaca !important;
+  background: #fef2f2 !important;
+}
+
+.doc-reject-btn:hover {
+  background: #fee2e2 !important;
+}
+
+@media (max-width: 900px) {
+  .doc-modal-content {
+    flex-direction: column;
+  }
+  .doc-modal-sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--cy-border, #e2e8f0);
+    max-height: 250px;
+  }
+}

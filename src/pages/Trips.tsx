@@ -9,7 +9,10 @@ import {
   Clock,
   Car,
   UserRound,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react'
+import DocumentPreviewModal from '../components/DocumentPreviewModal'
 import { SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
@@ -66,7 +69,18 @@ function TripsSkeleton() {
   )
 }
 
-function TripPanel({ trip }: { trip: Trip }) {
+function TripPanel({
+  trip,
+  onInspectPhoto,
+}: {
+  trip: Trip
+  onInspectPhoto?: (photo: {
+    title: string
+    subtitle?: string
+    url: string
+    metadata?: Array<{ label: string; value: string }>
+  }) => void
+}) {
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
@@ -174,6 +188,108 @@ function TripPanel({ trip }: { trip: Trip }) {
         </CardBody>
       </Card>
 
+      {/* Delivery Proof & Parcel Photos */}
+      <Card>
+        <CardBody>
+          <section className="panel-section">
+            <h3 className="panel-section__title">
+              <Camera size={15} strokeWidth={1.75} /> Delivery Proof & Parcel Photos
+            </h3>
+            <div className="trip-proof-grid">
+              <div
+                className={`trip-proof-card ${trip.pickupPhotoUrl ? 'is-available' : 'is-empty'}`}
+                onClick={() =>
+                  trip.pickupPhotoUrl &&
+                  onInspectPhoto?.({
+                    title: `Pickup Parcel Photo · ${trip.id}`,
+                    subtitle: `Order: ${trip.orderId} · Pickup: ${trip.pickup}`,
+                    url: trip.pickupPhotoUrl,
+                    metadata: [
+                      { label: 'Trip ID', value: trip.id },
+                      { label: 'Order ID', value: trip.orderId },
+                      { label: 'Proof Kind', value: 'Pickup Parcel Photo' },
+                      { label: 'Driver', value: trip.driver },
+                      { label: 'Pickup Location', value: trip.pickup },
+                      { label: 'Started', value: trip.started },
+                    ],
+                  })
+                }
+                role={trip.pickupPhotoUrl ? 'button' : undefined}
+                tabIndex={trip.pickupPhotoUrl ? 0 : undefined}
+              >
+                <div className="trip-proof-head">
+                  <span className="trip-proof-label">Pickup Proof</span>
+                  <span className={`trip-proof-tag ${trip.pickupPhotoUrl ? 'is-uploaded' : 'is-pending'}`}>
+                    {trip.pickupPhotoUrl ? 'Uploaded' : 'Pending'}
+                  </span>
+                </div>
+                <div className="trip-proof-media">
+                  {trip.pickupPhotoUrl ? (
+                    <>
+                      <img src={trip.pickupPhotoUrl} alt="Pickup parcel proof" className="trip-proof-thumbnail" />
+                      <div className="trip-proof-inspect-overlay">
+                        <Eye size={14} />
+                        <span>Inspect Photo</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="trip-proof-none">
+                      <ImageIcon size={20} strokeWidth={1.5} />
+                      <span>No pickup photo</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`trip-proof-card ${trip.dropPhotoUrl ? 'is-available' : 'is-empty'}`}
+                onClick={() =>
+                  trip.dropPhotoUrl &&
+                  onInspectPhoto?.({
+                    title: `Drop Delivery Photo · ${trip.id}`,
+                    subtitle: `Order: ${trip.orderId} · Drop: ${trip.drop}`,
+                    url: trip.dropPhotoUrl,
+                    metadata: [
+                      { label: 'Trip ID', value: trip.id },
+                      { label: 'Order ID', value: trip.orderId },
+                      { label: 'Proof Kind', value: 'Drop Delivery Photo' },
+                      { label: 'Driver', value: trip.driver },
+                      { label: 'Drop Location', value: trip.drop },
+                      { label: 'Trip Status', value: trip.status },
+                    ],
+                  })
+                }
+                role={trip.dropPhotoUrl ? 'button' : undefined}
+                tabIndex={trip.dropPhotoUrl ? 0 : undefined}
+              >
+                <div className="trip-proof-head">
+                  <span className="trip-proof-label">Drop Proof</span>
+                  <span className={`trip-proof-tag ${trip.dropPhotoUrl ? 'is-uploaded' : 'is-pending'}`}>
+                    {trip.dropPhotoUrl ? 'Uploaded' : 'Pending'}
+                  </span>
+                </div>
+                <div className="trip-proof-media">
+                  {trip.dropPhotoUrl ? (
+                    <>
+                      <img src={trip.dropPhotoUrl} alt="Drop delivery proof" className="trip-proof-thumbnail" />
+                      <div className="trip-proof-inspect-overlay">
+                        <Eye size={14} />
+                        <span>Inspect Photo</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="trip-proof-none">
+                      <ImageIcon size={20} strokeWidth={1.5} />
+                      <span>No drop photo</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </CardBody>
+      </Card>
+
       <Card>
         <CardBody>
           <section className="panel-section">
@@ -214,6 +330,12 @@ export default function Trips() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Trip | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [inspectedPhoto, setInspectedPhoto] = useState<{
+    title: string
+    subtitle?: string
+    url: string
+    metadata?: Array<{ label: string; value: string }>
+  } | null>(null)
 
   const filtered = useMemo(() => {
     if (!trips) return []
@@ -490,8 +612,19 @@ export default function Trips() {
         onClose={() => setPanelOpen(false)}
         width={520}
       >
-        {selected ? <TripPanel trip={selected} /> : null}
+        {selected ? (
+          <TripPanel trip={selected} onInspectPhoto={setInspectedPhoto} />
+        ) : null}
       </SidePanel>
+
+      <DocumentPreviewModal
+        open={Boolean(inspectedPhoto)}
+        onClose={() => setInspectedPhoto(null)}
+        title={inspectedPhoto?.title ?? 'Parcel Photo'}
+        subtitle={inspectedPhoto?.subtitle}
+        fileUrl={inspectedPhoto?.url}
+        metadata={inspectedPhoto?.metadata}
+      />
     </div>
   )
 }

@@ -41,6 +41,8 @@ export type PortalDriverRow = {
     number: string
     status: string
     expiry: string
+    file_url?: string
+    url?: string
   }>
   vehicle_details?: {
     make: string

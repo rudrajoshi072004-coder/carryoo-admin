@@ -113,6 +113,10 @@ export type Booking = {
   created_at: string
   notes?: string
   pricing_breakdown?: Record<string, string>
+  has_pickup_parcel_photo?: boolean
+  has_drop_parcel_photo?: boolean
+  pickup_photo_url?: string
+  drop_photo_url?: string
 }
 
 export type ServiceZone = {

@@ -7,6 +7,7 @@ export interface DriverDocument {
   number: string
   status: DocStatus
   expiry: string
+  url?: string
 }
 
 export interface DriverTrip {

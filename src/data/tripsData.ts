@@ -27,6 +27,8 @@ export interface Trip {
   city: string
   timeline: TripTimelineEvent[]
   notes?: string
+  pickupPhotoUrl?: string
+  dropPhotoUrl?: string
 }
 
 export const tripStatuses = ['All Status', 'Scheduled', 'Running', 'Completed', 'Cancelled'] as const
@@ -77,6 +79,8 @@ export const trips: Trip[] = [
       { label: 'In transit', time: '10:55 AM', done: true },
       { label: 'Delivered', time: '11:17 AM', done: true },
     ],
+    pickupPhotoUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',
+    dropPhotoUrl: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=1200&q=80',
   },
   {
     id: 'TRP-50121',

@@ -250,6 +250,7 @@ function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
             ? 'Expired'
             : 'Pending') as DocStatus,
       expiry: doc.expiry,
+      url: doc.file_url || doc.url,
     })),
     vehicleDetails: row.vehicle_details
       ? {
@@ -388,6 +389,12 @@ function bookingToTrip(b: Booking): Trip {
       { label: 'Current state', time: formatTimeOnly(b.created_at), done: status !== 'Scheduled', detail: b.state },
     ],
     notes: b.notes,
+    pickupPhotoUrl:
+      b.pickup_photo_url ||
+      (b.has_pickup_parcel_photo ? `/api/v1/bookings/${b.id}/parcel-photo/?kind=pickup` : undefined),
+    dropPhotoUrl:
+      b.drop_photo_url ||
+      (b.has_drop_parcel_photo ? `/api/v1/bookings/${b.id}/parcel-photo/?kind=drop` : undefined),
   }
 }
 

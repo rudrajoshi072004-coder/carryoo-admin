@@ -7,7 +7,9 @@ import {
   XCircle,
   Clock,
   Filter,
+  Maximize2,
 } from 'lucide-react'
+import DocumentPreviewModal from '../components/DocumentPreviewModal'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
@@ -74,6 +76,7 @@ export default function Documents() {
   const [selected, setSelected] = useState<VerificationDocument | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
 
   const filtered = useMemo(() => {
     if (!documents) return []
@@ -367,12 +370,38 @@ export default function Documents() {
       >
         {selected ? (
           <>
-            <div className="documents-preview">
-              <div className="documents-preview__placeholder">
-                <FileText size={40} strokeWidth={1.75} />
-                <span>{selected.previewLabel}</span>
-                <small>Document preview placeholder</small>
-              </div>
+            <div
+              className={`documents-preview ${selected.fileUrl ? 'has-file' : ''}`}
+              onClick={() => setPreviewModalOpen(true)}
+              role="button"
+              tabIndex={0}
+              title="Click to inspect document full screen"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setPreviewModalOpen(true)
+                }
+              }}
+            >
+              {selected.fileUrl ? (
+                <div className="documents-preview__image-box">
+                  <img
+                    src={selected.fileUrl}
+                    alt={`${selected.type} preview`}
+                    className="documents-preview__img"
+                  />
+                  <div className="documents-preview__hover-overlay">
+                    <Maximize2 size={18} />
+                    <span>Click to zoom & inspect</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="documents-preview__placeholder">
+                  <FileText size={40} strokeWidth={1.75} />
+                  <span>{selected.previewLabel}</span>
+                  <small>Click to open document inspector</small>
+                </div>
+              )}
             </div>
 
             <div className="documents-panel-meta">
@@ -446,6 +475,47 @@ export default function Documents() {
         reasonPlaceholder="e.g. Image blurry, document expired…"
         onConfirm={handleReject}
         onClose={() => setRejectOpen(false)}
+      />
+
+      <DocumentPreviewModal
+        open={previewModalOpen}
+        onClose={() => setPreviewModalOpen(false)}
+        title={selected ? `${selected.type} · ${selected.driverName}` : 'Document Preview'}
+        subtitle={
+          selected ? `Driver ID: ${selected.driverId} · Submitted: ${selected.submitted}` : undefined
+        }
+        fileUrl={selected?.fileUrl}
+        fileType={selected?.fileType}
+        status={selected?.status}
+        metadata={
+          selected
+            ? [
+                { label: 'Document ID', value: selected.id },
+                { label: 'Document Type', value: selected.type },
+                { label: 'Driver Name', value: selected.driverName },
+                { label: 'Driver ID', value: selected.driverId },
+                { label: 'City', value: selected.city },
+                { label: 'Submitted Date', value: selected.submitted },
+                { label: 'Status', value: selected.status },
+              ]
+            : []
+        }
+        onApprove={
+          selected && (selected.status === 'Pending' || selected.status === 'Resubmitted')
+            ? () => {
+                handleApprove(selected)
+                setPreviewModalOpen(false)
+              }
+            : undefined
+        }
+        onReject={
+          selected && (selected.status === 'Pending' || selected.status === 'Resubmitted')
+            ? () => {
+                setPreviewModalOpen(false)
+                setRejectOpen(true)
+              }
+            : undefined
+        }
       />
     </div>
   )
