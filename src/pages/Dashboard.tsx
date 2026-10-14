@@ -161,7 +161,10 @@ export default function Dashboard() {
               {categories.map((c) => (
                 <li key={c.id}>
                   <span>{c.name}</span>
-                  <span className="cy-table__mono">{formatINR(Number.parseFloat(c.base_fare))} + {formatINR(Number.parseFloat(c.per_km_rate))}/km</span>
+                  <span className="cy-table__mono">
+                    {formatINR(Number.parseFloat(c.base_fare))}
+                    {c.base_fare_km ? ` (${c.base_fare_km} km incl.)` : ''} + {formatINR(Number.parseFloat(c.per_km_rate))}/km
+                  </span>
                   <StatusPill status={c.active ? 'Active' : 'Off'} tone={c.active ? 'active' : 'inactive'} />
                 </li>
               ))}

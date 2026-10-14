@@ -32,6 +32,7 @@ const PAGE_SIZE = 10
 const emptyForm: VehicleCategoryInput = {
   name: '',
   base_fare: '35.00',
+  base_fare_km: '2.00',
   per_km_rate: '9.00',
   minimum_fare: '35.00',
   waiting_per_min: '2.00',
@@ -109,6 +110,7 @@ export default function Vehicles() {
     setForm({
       name: item.name,
       base_fare: item.base_fare,
+      base_fare_km: item.base_fare_km ?? '2.00',
       per_km_rate: item.per_km_rate,
       minimum_fare: item.minimum_fare ?? item.base_fare,
       waiting_per_min: item.waiting_per_min ?? '2.00',
@@ -163,11 +165,12 @@ export default function Vehicles() {
   const handleExport = () => {
     exportCsv(
       'carryoo-vehicle-categories.csv',
-      ['ID', 'Name', 'Base fare', 'Per km', 'Min fare', 'Max kg', 'Active'],
+      ['ID', 'Name', 'Base fare', 'Base radius (km)', 'Per km', 'Min fare', 'Max kg', 'Active'],
       filtered.map((c) => [
         c.id,
         c.name,
         c.base_fare,
+        c.base_fare_km ?? '0',
         c.per_km_rate,
         c.minimum_fare ?? '',
         c.max_weight_kg ?? '',
@@ -277,6 +280,7 @@ export default function Vehicles() {
                   <tr>
                     <th>Type</th>
                     <th>Base fare</th>
+                    <th>Base radius</th>
                     <th>Per km</th>
                     <th>Min fare</th>
                     <th>Max weight</th>
@@ -301,6 +305,7 @@ export default function Vehicles() {
                           </div>
                         </td>
                         <td className="cy-table__mono">{formatINR(Number.parseFloat(item.base_fare))}</td>
+                        <td className="cy-table__mono">{item.base_fare_km ? `${item.base_fare_km} km` : '2 km'}</td>
                         <td className="cy-table__mono">{formatINR(Number.parseFloat(item.per_km_rate))}</td>
                         <td className="cy-table__mono">
                           {item.minimum_fare ? formatINR(Number.parseFloat(item.minimum_fare)) : '—'}
@@ -341,6 +346,16 @@ export default function Vehicles() {
           <label className="form-field">
             <span>Base fare (₹)</span>
             <input value={form.base_fare} onChange={(e) => setForm({ ...form, base_fare: e.target.value })} />
+          </label>
+          <label className="form-field">
+            <span>Base radius (km)</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={form.base_fare_km ?? '2.00'}
+              onChange={(e) => setForm({ ...form, base_fare_km: e.target.value })}
+            />
           </label>
           <label className="form-field">
             <span>Per km rate (₹)</span>

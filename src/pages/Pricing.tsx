@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { IndianRupee, Pencil, RotateCcw, Save } from 'lucide-react'
+import { IndianRupee, Milestone, Pencil, RotateCcw, Route, Save } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Button, Card, CardBody, CardHeader, EmptyState, Skeleton } from '../components/ui'
 import { PermissionBanner } from '../components/PermissionBanner'
@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { getApiErrorMessage } from '../api/client'
 import { listVehicleCategories, updateVehicleCategory } from '../api/services/vehicleCategories'
-import { listServiceZones, updateServiceZone } from '../api/services/serviceZones'
+import { createServiceZone, listServiceZones, updateServiceZone } from '../api/services/serviceZones'
 import type { VehicleCategory, VehicleCategoryInput } from '../api/types'
 import { formatINR } from '../lib/utils'
 import {
@@ -18,8 +18,13 @@ import {
 } from '../lib/customerVehicles'
 import './Pricing.css'
 
-const CITY_FIELDS = ['base_fare', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const
-const OUTSTATION_FIELDS = ['outstation_base_fare', 'outstation_per_km_rate', 'outstation_minimum_fare'] as const
+const CITY_FIELDS = ['base_fare', 'base_fare_km', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const
+const OUTSTATION_FIELDS = [
+  'outstation_base_fare',
+  'outstation_base_fare_km',
+  'outstation_per_km_rate',
+  'outstation_minimum_fare',
+] as const
 
 type CityField = (typeof CITY_FIELDS)[number]
 type OutstationField = (typeof OUTSTATION_FIELDS)[number]
@@ -27,12 +32,30 @@ type RateField = CityField | OutstationField
 
 const RATE_LABELS: Record<RateField, string> = {
   base_fare: 'Base fare',
+  base_fare_km: 'Base radius',
   per_km_rate: 'Per km',
   minimum_fare: 'Minimum fare',
   waiting_per_min: 'Waiting / min',
   outstation_base_fare: 'Base fare',
+  outstation_base_fare_km: 'Base radius',
   outstation_per_km_rate: 'Per km',
   outstation_minimum_fare: 'Minimum fare',
+}
+
+const RATE_HINTS: Partial<Record<RateField, string>> = {
+  base_fare: 'Fixed start fare',
+  base_fare_km: 'Distance covered in base fare',
+  per_km_rate: 'Per km after base radius',
+  minimum_fare: 'Lowest trip total',
+  waiting_per_min: 'Wait time per minute',
+  outstation_base_fare: 'Fixed outstation start',
+  outstation_base_fare_km: 'Distance covered in outstation base',
+  outstation_per_km_rate: 'Rate per extra km',
+  outstation_minimum_fare: 'Lowest outstation fare',
+}
+
+function isRadiusField(key: RateField): boolean {
+  return key === 'base_fare_km' || key === 'outstation_base_fare_km'
 }
 
 function money(value: string | null | undefined, fallback = '0.00'): string {
@@ -42,10 +65,12 @@ function money(value: string | null | undefined, fallback = '0.00'): string {
 function categoryDraft(cat: VehicleCategory): Record<RateField, string> {
   return {
     base_fare: money(cat.base_fare),
+    base_fare_km: money(cat.base_fare_km, '2.00'),
     per_km_rate: money(cat.per_km_rate),
     minimum_fare: money(cat.minimum_fare, cat.base_fare),
     waiting_per_min: money(cat.waiting_per_min, '2.00'),
     outstation_base_fare: money(cat.outstation_base_fare, '0.00'),
+    outstation_base_fare_km: money(cat.outstation_base_fare_km, '0.00'),
     outstation_per_km_rate: money(cat.outstation_per_km_rate, cat.per_km_rate),
     outstation_minimum_fare: money(cat.outstation_minimum_fare, '0.00'),
   }
@@ -59,10 +84,25 @@ function normalizeRate(value: string, label: string): string {
   return parsed.toFixed(2)
 }
 
-function previewFare(base: string, perKm: string, minimum: string, km: number): number {
-  return Math.round(
-    Math.max(Number.parseFloat(minimum || '0'), Number.parseFloat(base || '0') + Number.parseFloat(perKm || '0') * km),
-  )
+function previewFare(
+  base: string,
+  perKm: string,
+  minimum: string,
+  baseKm: string,
+  km: number,
+): { total: number; explanation: string } {
+  const b = Number.parseFloat(base || '0')
+  const p = Number.parseFloat(perKm || '0')
+  const m = Number.parseFloat(minimum || '0')
+  const bKm = Math.max(0, Number.parseFloat(baseKm || '0'))
+  const extraKm = Math.max(0, km - bKm)
+  const calc = b + p * extraKm
+  const total = Math.round(Math.max(m, calc))
+  const explanation =
+    bKm > 0
+      ? `(₹${b.toFixed(0)} covers 0–${bKm} km + ₹${p.toFixed(0)}/km × ${extraKm.toFixed(1)} km extra)`
+      : `(₹${b.toFixed(0)} base + ₹${p.toFixed(0)}/km × ${km} km)`
+  return { total, explanation }
 }
 
 function RateInputs({
@@ -78,26 +118,45 @@ function RateInputs({
 }) {
   return (
     <div className={`pricing-fare-grid ${canEdit ? 'pricing-fare-grid--editable' : ''}`}>
-      {fields.map((key) => (
-        <label key={key} className="pricing-fare-field">
-          <span className="pricing-fare-field__label">{RATE_LABELS[key]}</span>
-          <div className={`pricing-fare-field__input-wrap ${canEdit ? 'is-editable' : 'is-readonly'}`}>
-            <IndianRupee size={14} strokeWidth={1.75} aria-hidden />
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={draft[key]}
-              onChange={(e) => onChange(key, e.target.value)}
-              disabled={!canEdit}
-              readOnly={!canEdit}
-              aria-label={RATE_LABELS[key]}
-            />
-            {canEdit ? <Pencil size={14} strokeWidth={1.75} className="pricing-fare-field__edit-icon" aria-hidden /> : null}
-          </div>
-        </label>
-      ))}
+      {fields.map((key) => {
+        const isRadius = isRadiusField(key)
+        return (
+          <label key={key} className="pricing-fare-field">
+            <div className="pricing-fare-field__header">
+              <span className="pricing-fare-field__label">{RATE_LABELS[key]}</span>
+              {RATE_HINTS[key] ? (
+                <span className="pricing-fare-field__subhint">{RATE_HINTS[key]}</span>
+              ) : null}
+            </div>
+            <div
+              className={`pricing-fare-field__input-wrap ${
+                canEdit ? 'is-editable' : 'is-readonly'
+              } ${isRadius ? 'is-radius' : ''}`}
+            >
+              {isRadius ? (
+                <Route size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
+              ) : (
+                <IndianRupee size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
+              )}
+              <input
+                type="number"
+                min="0"
+                step={isRadius ? '0.1' : '0.01'}
+                inputMode="decimal"
+                value={draft[key]}
+                onChange={(e) => onChange(key, e.target.value)}
+                disabled={!canEdit}
+                readOnly={!canEdit}
+                aria-label={`${RATE_LABELS[key]}${isRadius ? ' in kilometres' : ''}`}
+              />
+              {isRadius ? <span className="pricing-radius-unit">km</span> : null}
+              {canEdit ? (
+                <Pencil size={14} strokeWidth={1.75} className="pricing-fare-field__edit-icon" aria-hidden />
+              ) : null}
+            </div>
+          </label>
+        )
+      })}
     </div>
   )
 }
@@ -120,13 +179,14 @@ export default function Pricing() {
     id: '',
     name: '',
     base_fare: '',
+    base_fare_km: '2.00',
     per_km_rate: '',
     active: true,
   }), [])
   const [draft, setDraft] = useState<Record<RateField, string>>(emptyDraft)
   const [savedSnapshot, setSavedSnapshot] = useState<Record<RateField, string>>(emptyDraft)
   const [savingCat, setSavingCat] = useState(false)
-  const [radiusDraft, setRadiusDraft] = useState('')
+  const [radiusDraft, setRadiusDraft] = useState('50')
   const [savingRadius, setSavingRadius] = useState(false)
 
   useEffect(() => {
@@ -141,20 +201,24 @@ export default function Pricing() {
     }
   }, [customerCategories, activeId])
 
-  useEffect(() => {
-    setRadiusDraft(primaryZone?.service_radius_km ?? '50')
-  }, [primaryZone])
-
   const activeCategory = useMemo(
     () => customerCategories.find((c) => c.id === activeId) ?? customerCategories[0] ?? null,
     [customerCategories, activeId],
   )
+
+  useEffect(() => {
+    const val = activeCategory?.outstation_threshold_km || primaryZone?.service_radius_km || '50'
+    setRadiusDraft(val)
+  }, [primaryZone, activeCategory])
+
   const showOutstation = Boolean(activeCategory && usesTripTypePricing(activeCategory.name))
   const ratesDirty = useMemo(() => {
     const keys: RateField[] = showOutstation ? [...CITY_FIELDS, ...OUTSTATION_FIELDS] : [...CITY_FIELDS]
     return keys.some((key) => draft[key] !== savedSnapshot[key])
   }, [draft, savedSnapshot, showOutstation])
-  const radiusDirty = Boolean(primaryZone && radiusDraft !== (primaryZone.service_radius_km ?? ''))
+
+  const currentSavedRadius = activeCategory?.outstation_threshold_km || primaryZone?.service_radius_km || '50'
+  const radiusDirty = radiusDraft !== currentSavedRadius
 
   const selectCategory = (cat: VehicleCategory) => {
     const next = categoryDraft(cat)
@@ -169,14 +233,19 @@ export default function Pricing() {
     try {
       const payload: Partial<VehicleCategoryInput> = {
         base_fare: normalizeRate(draft.base_fare, 'Base fare'),
+        base_fare_km: normalizeRate(draft.base_fare_km, 'Base fare radius'),
         per_km_rate: normalizeRate(draft.per_km_rate, 'Per km'),
         minimum_fare: normalizeRate(draft.minimum_fare, 'Minimum fare'),
         waiting_per_min: normalizeRate(draft.waiting_per_min, 'Waiting / min'),
       }
       if (showOutstation) {
         payload.outstation_base_fare = normalizeRate(draft.outstation_base_fare, 'Outstation base fare')
+        payload.outstation_base_fare_km = normalizeRate(draft.outstation_base_fare_km, 'Outstation base radius')
         payload.outstation_per_km_rate = normalizeRate(draft.outstation_per_km_rate, 'Outstation per km')
         payload.outstation_minimum_fare = normalizeRate(draft.outstation_minimum_fare, 'Outstation minimum fare')
+        if (radiusDraft) {
+          payload.outstation_threshold_km = normalizeRate(radiusDraft, 'Outstation distance threshold')
+        }
         if (Number.parseFloat(payload.outstation_per_km_rate) <= 0) {
           toast({ title: 'Outstation per km is required', description: 'Enter a rate greater than 0.', tone: 'error' })
           return
@@ -204,19 +273,46 @@ export default function Pricing() {
   }
 
   const saveRadius = async () => {
-    if (!primaryZone || !canEdit) return
+    if (!canEdit) return
     setSavingRadius(true)
     try {
-      const value = normalizeRate(radiusDraft, 'Outstation after')
-      const updated = await updateServiceZone(primaryZone.id, {
-        service_radius_km: value,
-        active: primaryZone.active ?? true,
+      const value = normalizeRate(radiusDraft, 'Outstation threshold')
+      if (primaryZone) {
+        const updated = await updateServiceZone(primaryZone.id, {
+          service_radius_km: value,
+          active: primaryZone.active ?? true,
+        })
+        setZones((prev) => prev?.map((z) => (z.id === updated.id ? updated : z)) ?? prev)
+      } else {
+        const created = await createServiceZone({
+          city_name: 'Nashik',
+          zone_name: 'Nashik Flow Zone',
+          service_radius_km: value,
+          dispatch_radius_km: '10',
+          active: true,
+        })
+        setZones([created])
+      }
+      if (activeCategory) {
+        const catUpdated = await updateVehicleCategory(activeCategory.id, {
+          outstation_threshold_km: value,
+        })
+        setCategories((prev) => prev?.map((c) => (c.id === catUpdated.id ? catUpdated : c)) ?? prev)
+      }
+      setRadiusDraft(value)
+      toast({
+        title: 'Outstation threshold saved',
+        description: `Trips longer than ${value} km will use Outstation rates for ${customerVehicleLabel(
+          activeCategory?.name ?? '',
+        )}.`,
+        tone: 'success',
       })
-      setZones((prev) => prev?.map((z) => (z.id === updated.id ? updated : z)) ?? prev)
-      setRadiusDraft(updated.service_radius_km ?? value)
-      toast({ title: 'Radius saved', description: `Trips longer than ${value} km are treated as outstation.`, tone: 'success' })
     } catch (err) {
-      toast({ title: 'Could not save radius', description: getApiErrorMessage(err), tone: 'error' })
+      toast({
+        title: 'Could not save outstation threshold',
+        description: err instanceof Error ? err.message : getApiErrorMessage(err),
+        tone: 'error',
+      })
     } finally {
       setSavingRadius(false)
     }
@@ -253,11 +349,12 @@ export default function Pricing() {
   }
 
   const label = customerVehicleLabel(activeCategory.name)
-  const cityPreview = previewFare(draft.base_fare, draft.per_km_rate, draft.minimum_fare, 10)
+  const cityPreview = previewFare(draft.base_fare, draft.per_km_rate, draft.minimum_fare, draft.base_fare_km, 10)
   const outstationPreview = previewFare(
     draft.outstation_base_fare,
     draft.outstation_per_km_rate,
     draft.outstation_minimum_fare,
+    draft.outstation_base_fare_km,
     80,
   )
 
@@ -265,7 +362,7 @@ export default function Pricing() {
     <div className="pricing-page cy-page">
       <PageHeader
         title="Pricing"
-        subtitle="Edit the rates customers see. Save once — the next fare quote uses them."
+        subtitle="Configure base fare radius, per-km rates, and outstation distance thresholds for customer fare quotes."
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Pricing' }]}
       />
 
@@ -288,16 +385,24 @@ export default function Pricing() {
         ))}
       </div>
 
-      {showOutstation && primaryZone ? (
-        <Card className="pricing-radius-card">
+      {showOutstation ? (
+        <Card className="pricing-radius-card pricing-outstation-threshold-card">
           <CardBody>
             <div className="pricing-radius-row">
-              <div>
-                <p className="pricing-radius-label">Outstation starts after</p>
-                <p className="pricing-radius-hint">Shorter trips use Within City rates. Longer trips use Outstation rates.</p>
+              <div className="pricing-outstation-info">
+                <div className="pricing-outstation-badge-row">
+                  <span className="pricing-outstation-badge">Outstation Rule</span>
+                  <span className="pricing-outstation-scope">{label} Only</span>
+                </div>
+                <p className="pricing-radius-label">Outstation Distance Threshold</p>
+                <p className="pricing-radius-hint">
+                  Trips up to this distance are billed at <strong>Within City</strong> rates.
+                  Trips exceeding this distance automatically switch to <strong>Outstation</strong> rates.
+                </p>
               </div>
               <div className="pricing-radius-controls">
-                <div className={`pricing-fare-field__input-wrap ${canEdit ? 'is-editable' : 'is-readonly'}`}>
+                <div className={`pricing-fare-field__input-wrap ${canEdit ? 'is-editable' : 'is-readonly'} is-radius`}>
+                  <Milestone size={16} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
                   <input
                     type="number"
                     min="1"
@@ -305,15 +410,32 @@ export default function Pricing() {
                     value={radiusDraft}
                     onChange={(e) => setRadiusDraft(e.target.value)}
                     disabled={!canEdit}
-                    aria-label="Outstation starts after kilometres"
+                    aria-label="Outstation threshold in kilometres"
                   />
                   <span className="pricing-radius-unit">km</span>
+                  {canEdit ? (
+                    <Pencil size={14} strokeWidth={1.75} className="pricing-fare-field__edit-icon" aria-hidden />
+                  ) : null}
                 </div>
                 {canEdit ? (
-                  <Button variant="secondary" size="sm" onClick={saveRadius} disabled={!radiusDirty || savingRadius}>
-                    {savingRadius ? 'Saving…' : 'Save radius'}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={saveRadius}
+                    disabled={!radiusDirty || savingRadius}
+                  >
+                    <Save size={14} strokeWidth={1.75} />
+                    {savingRadius ? 'Saving…' : 'Save threshold'}
                   </Button>
                 ) : null}
+              </div>
+            </div>
+            <div className="pricing-threshold-callout">
+              <div className="pricing-threshold-pill">
+                Within City: <strong>0 – {radiusDraft || '50'} km</strong>
+              </div>
+              <div className="pricing-threshold-pill pricing-threshold-pill--outstation">
+                Outstation: <strong>&gt; {radiusDraft || '50'} km</strong>
               </div>
             </div>
           </CardBody>
@@ -324,7 +446,7 @@ export default function Pricing() {
         <Card className="pricing-fare-section">
           <CardHeader
             title={`${label} — Within City`}
-            subtitle="Fare = base fare + (per km × trip distance). Minimum fare applies if that total is lower."
+            subtitle="Fare = base fare (covers base radius) + per km for extra distance. Minimum fare applies if total is lower."
           />
           <CardBody>
             <RateInputs
@@ -334,7 +456,8 @@ export default function Pricing() {
               onChange={(field, value) => setDraft({ ...draft, [field]: value })}
             />
             <p className="pricing-preview">
-              Sample 10 km: <strong>{formatINR(cityPreview)}</strong>
+              Sample 10 km trip: <strong>{formatINR(cityPreview.total)}</strong>{' '}
+              <span className="pricing-preview-detail">{cityPreview.explanation}</span>
             </p>
           </CardBody>
         </Card>
@@ -343,7 +466,7 @@ export default function Pricing() {
           <Card className="pricing-fare-section">
             <CardHeader
               title={`${label} — Outstation`}
-              subtitle="One rate for the whole trip. Fare = base fare + (per km × full distance)."
+              subtitle="Outstation rate for long-distance trips. Base fare covers base radius, then per km rate applies."
             />
             <CardBody>
               <RateInputs
@@ -353,7 +476,8 @@ export default function Pricing() {
                 onChange={(field, value) => setDraft({ ...draft, [field]: value })}
               />
               <p className="pricing-preview">
-                Sample 80 km: <strong>{formatINR(outstationPreview)}</strong>
+                Sample 80 km trip: <strong>{formatINR(outstationPreview.total)}</strong>{' '}
+                <span className="pricing-preview-detail">{outstationPreview.explanation}</span>
               </p>
             </CardBody>
           </Card>

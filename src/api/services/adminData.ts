@@ -931,6 +931,57 @@ export async function fetchIncentivesAdmin(): Promise<Incentive[]> {
 
 export async function fetchDocumentsAdmin(): Promise<import('../../data/documentsData').VerificationDocument[]> {
   const drivers = await fetchDriversAdmin()
+  const list: import('../../data/documentsData').VerificationDocument[] = []
+
+  const normalizeType = (raw: string): import('../../data/documentsData').DocumentType => {
+    const s = (raw || '').toLowerCase()
+    if (s.includes('license') || s.includes('dl')) return 'DL'
+    if (s.includes('rc') || s.includes('registration')) return 'RC'
+    if (s.includes('aadhaar')) return 'Aadhaar'
+    if (s.includes('pan')) return 'PAN'
+    if (s.includes('insurance')) return 'Insurance'
+    if (s.includes('selfie') || s.includes('photo')) return 'Photo'
+    return 'DL'
+  }
+
+  for (const d of drivers) {
+    if (d.documents && d.documents.length > 0) {
+      for (const doc of d.documents) {
+        const normType = normalizeType(doc.type)
+        const statusMap: Record<string, import('../../data/documentsData').DocumentStatus> = {
+          Verified: 'Approved',
+          Approved: 'Approved',
+          Rejected: 'Rejected',
+          Resubmitted: 'Resubmitted',
+        }
+        const docStatus = statusMap[doc.status] || 'Pending'
+        list.push({
+          id: `DOC-${d.id}-${doc.type}`,
+          driverId: d.displayId || d.id,
+          driverName: d.name,
+          type: normType,
+          status: docStatus,
+          city: d.city || 'Nashik',
+          submitted: d.joined || '—',
+          previewLabel: doc.url ? 'Preview available' : (doc.number !== '—' ? doc.number : 'Awaiting upload'),
+          fileUrl: doc.url,
+          fileType: (doc.url || '').toLowerCase().includes('.pdf') ? 'pdf' : 'image',
+          audit: [
+            {
+              action: doc.url ? 'Cloudflare R2 synced' : 'Document registered',
+              by: 'system',
+              at: formatWhen(new Date().toISOString()),
+            },
+          ],
+        })
+      }
+    }
+  }
+
+  if (list.length > 0) {
+    return list
+  }
+
   return drivers.slice(0, 20).map((d) => ({
     id: `DOC-${d.id}`,
     driverId: d.id,

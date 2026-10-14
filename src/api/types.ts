@@ -34,12 +34,15 @@ export type VehicleCategory = {
   max_weight_kg?: number | null
   max_volume_m3?: string | null
   base_fare: string
+  base_fare_km?: string | null
   per_km_rate: string
   waiting_per_min?: string | null
   minimum_fare?: string | null
   outstation_base_fare?: string | null
+  outstation_base_fare_km?: string | null
   outstation_per_km_rate?: string | null
   outstation_minimum_fare?: string | null
+  outstation_threshold_km?: string | null
   helper_supported?: boolean
   intra_city_available?: boolean
   active: boolean
@@ -51,12 +54,15 @@ export type VehicleCategory = {
 export type VehicleCategoryInput = {
   name: string
   base_fare: string
+  base_fare_km?: string
   per_km_rate: string
   minimum_fare?: string
   waiting_per_min?: string
   outstation_base_fare?: string
+  outstation_base_fare_km?: string
   outstation_per_km_rate?: string
   outstation_minimum_fare?: string
+  outstation_threshold_km?: string
   max_weight_kg?: number
   active?: boolean
   helper_supported?: boolean

@@ -134,6 +134,103 @@
   gap: var(--cy-space-3);
 }
 
+.pricing-outstation-threshold-card {
+  border-left: 3px solid #f97316;
+}
+
+.pricing-outstation-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.pricing-outstation-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(234, 88, 12, 0.12);
+  color: #c2410c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pricing-outstation-scope {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cy-text-secondary);
+  background: var(--cy-slate-100);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pricing-threshold-callout {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--cy-border);
+  flex-wrap: wrap;
+}
+
+.pricing-threshold-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: var(--cy-slate-50);
+  border: 1px solid var(--cy-border);
+  color: var(--cy-text);
+}
+
+.pricing-threshold-pill--outstation {
+  background: #fff7ed;
+  border-color: #ffedd5;
+  color: #9a3412;
+}
+
+.pricing-fare-field__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.pricing-fare-field__subhint {
+  font-size: 11px;
+  color: var(--cy-text-muted);
+  font-weight: 500;
+}
+
+.pricing-fare-field__input-wrap.is-radius {
+  border-color: #cbd5e1;
+}
+
+.pricing-fare-field__input-wrap.is-radius:focus-within {
+  border-color: var(--cy-primary);
+}
+
+.pricing-field-icon {
+  flex-shrink: 0;
+  color: var(--cy-text-muted);
+}
+
+.pricing-fare-field__input-wrap.is-editable:focus-within .pricing-field-icon {
+  color: var(--cy-primary);
+}
+
+.pricing-preview-detail {
+  font-size: 12px;
+  color: var(--cy-text-secondary);
+  font-weight: normal;
+  margin-left: 6px;
+}
+
 .pricing-fare-field {
   display: flex;
   flex-direction: column;
