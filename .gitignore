@@ -25,3 +25,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Work logs & timesheets
+*.xlsx
+*.xls
+Work Log*.xlsx
