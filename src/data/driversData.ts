@@ -35,6 +35,7 @@ export interface Driver {
   vehicle: string
   vehicleType: string
   city: string
+  acceptsOutstation?: boolean
   rating: number
   wallet: number
   status: DriverStatus

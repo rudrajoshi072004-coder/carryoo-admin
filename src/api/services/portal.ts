@@ -33,6 +33,7 @@ export type PortalDriverRow = {
   rating: string
   total_trips?: number
   wallet_balance?: string
+  accepts_outstation?: boolean
   joined_at?: string | null
   registered_at?: string | null
   registration_status?: 'new' | 'kyc_pending' | 'approved' | 'rejected'

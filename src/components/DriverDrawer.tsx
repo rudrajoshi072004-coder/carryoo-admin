@@ -161,6 +161,16 @@ export default function DriverDrawer({
                 <span className="drawer-field__value">{driver.experience}</span>
               </div>
               <div className="drawer-field">
+                <span className="drawer-field__label">Outstation Trips</span>
+                <span className="drawer-field__value">
+                  {driver.acceptsOutstation !== false ? (
+                    <span style={{ color: "#16a34a", fontWeight: 700 }}>Opted In</span>
+                  ) : (
+                    <span style={{ color: "#64748b", fontWeight: 600 }}>Opted Out</span>
+                  )}
+                </span>
+              </div>
+              <div className="drawer-field">
                 <span className="drawer-field__label">Rating</span>
                 <span className="drawer-field__value drawer-field__value--rating">
                   <Star size={13} fill="#f59e0b" color="#f59e0b" /> {driver.rating.toFixed(1)}
