@@ -43,6 +43,11 @@ export type VehicleCategory = {
   outstation_per_km_rate?: string | null
   outstation_minimum_fare?: string | null
   outstation_threshold_km?: string | null
+  outstation_step_km?: string | null
+  outstation_step_discount?: string | null
+  outstation_step_discount_percent?: string | null
+  outstation_deadhead_multiplier?: string | null
+  outstation_min_per_km_rate?: string | null
   helper_supported?: boolean
   intra_city_available?: boolean
   active: boolean
@@ -63,6 +68,11 @@ export type VehicleCategoryInput = {
   outstation_per_km_rate?: string
   outstation_minimum_fare?: string
   outstation_threshold_km?: string
+  outstation_step_km?: string
+  outstation_step_discount?: string
+  outstation_step_discount_percent?: string
+  outstation_deadhead_multiplier?: string
+  outstation_min_per_km_rate?: string
   max_weight_kg?: number
   active?: boolean
   helper_supported?: boolean

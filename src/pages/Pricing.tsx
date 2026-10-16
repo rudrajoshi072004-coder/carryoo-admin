@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { IndianRupee, Milestone, Pencil, RotateCcw, Route, Save } from 'lucide-react'
+import { IndianRupee, Milestone, Pencil, Percent, RotateCcw, Route, Save, ShieldCheck, Sparkles } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Button, Card, CardBody, CardHeader, EmptyState, Skeleton } from '../components/ui'
 import { PermissionBanner } from '../components/PermissionBanner'
@@ -19,12 +19,19 @@ import {
 import './Pricing.css'
 
 const CITY_FIELDS = ['base_fare', 'base_fare_km', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const
-const OUTSTATION_FIELDS = [
+const OUTSTATION_BASE_FIELDS = [
   'outstation_base_fare',
   'outstation_base_fare_km',
   'outstation_per_km_rate',
   'outstation_minimum_fare',
 ] as const
+const OUTSTATION_LAYER_FIELDS = [
+  'outstation_step_km',
+  'outstation_step_discount_percent',
+  'outstation_deadhead_multiplier',
+  'outstation_min_per_km_rate',
+] as const
+const OUTSTATION_FIELDS = [...OUTSTATION_BASE_FIELDS, ...OUTSTATION_LAYER_FIELDS] as const
 
 type CityField = (typeof CITY_FIELDS)[number]
 type OutstationField = (typeof OUTSTATION_FIELDS)[number]
@@ -40,6 +47,10 @@ const RATE_LABELS: Record<RateField, string> = {
   outstation_base_fare_km: 'Base radius',
   outstation_per_km_rate: 'Per km',
   outstation_minimum_fare: 'Minimum fare',
+  outstation_step_km: 'Layer interval',
+  outstation_step_discount_percent: 'Layer discount',
+  outstation_deadhead_multiplier: 'Deadhead return',
+  outstation_min_per_km_rate: 'Rate floor',
 }
 
 const RATE_HINTS: Partial<Record<RateField, string>> = {
@@ -50,12 +61,24 @@ const RATE_HINTS: Partial<Record<RateField, string>> = {
   waiting_per_min: 'Wait time per minute',
   outstation_base_fare: 'Fixed outstation start',
   outstation_base_fare_km: 'Distance covered in outstation base',
-  outstation_per_km_rate: 'Rate per extra km',
+  outstation_per_km_rate: 'Base rate per extra km',
   outstation_minimum_fare: 'Lowest outstation fare',
+  outstation_step_km: 'Discount applied after every X km',
+  outstation_step_discount_percent: '% decrease per distance block',
+  outstation_deadhead_multiplier: 'Compensate return trip (1.3x to 1.4x)',
+  outstation_min_per_km_rate: 'Hard price floor per km',
+}
+
+function getFieldUnit(key: RateField): string | null {
+  if (key === 'base_fare_km' || key === 'outstation_base_fare_km' || key === 'outstation_step_km') return 'km'
+  if (key === 'outstation_step_discount_percent') return '%'
+  if (key === 'outstation_deadhead_multiplier') return 'x'
+  if (key === 'outstation_min_per_km_rate') return '₹/km'
+  return null
 }
 
 function isRadiusField(key: RateField): boolean {
-  return key === 'base_fare_km' || key === 'outstation_base_fare_km'
+  return key === 'base_fare_km' || key === 'outstation_base_fare_km' || key === 'outstation_step_km'
 }
 
 function money(value: string | null | undefined, fallback = '0.00'): string {
@@ -73,6 +96,10 @@ function categoryDraft(cat: VehicleCategory): Record<RateField, string> {
     outstation_base_fare_km: money(cat.outstation_base_fare_km, '0.00'),
     outstation_per_km_rate: money(cat.outstation_per_km_rate, cat.per_km_rate),
     outstation_minimum_fare: money(cat.outstation_minimum_fare, '0.00'),
+    outstation_step_km: money(cat.outstation_step_km, '10.00'),
+    outstation_step_discount_percent: money(cat.outstation_step_discount_percent, '3.00'),
+    outstation_deadhead_multiplier: money(cat.outstation_deadhead_multiplier, '1.35'),
+    outstation_min_per_km_rate: money(cat.outstation_min_per_km_rate, '16.00'),
   }
 }
 
@@ -105,6 +132,73 @@ function previewFare(
   return { total, explanation }
 }
 
+function simulateOutstationFare({
+  base,
+  baseKm,
+  perKm,
+  minimum,
+  stepKm,
+  discountPct,
+  deadheadMult,
+  minRate,
+  distanceKm,
+}: {
+  base: string
+  baseKm: string
+  perKm: string
+  minimum: string
+  stepKm: string
+  discountPct: string
+  deadheadMult: string
+  minRate: string
+  distanceKm: number
+}): { total: number; effectivePerKm: number; explanation: string } {
+  const b = Math.max(0, Number.parseFloat(base || '0'))
+  const bKm = Math.max(0, Number.parseFloat(baseKm || '0'))
+  const p = Math.max(0, Number.parseFloat(perKm || '0'))
+  const minF = Math.max(0, Number.parseFloat(minimum || '0'))
+  const sKm = Math.max(1, Number.parseFloat(stepKm || '10'))
+  const dPct = Math.max(0, Number.parseFloat(discountPct || '0'))
+  const mult = Math.max(1, Number.parseFloat(deadheadMult || '1'))
+  const floorRate = Math.max(0, Number.parseFloat(minRate || '0'))
+
+  if (distanceKm <= bKm) {
+    const total = Math.round(Math.max(minF, b))
+    return {
+      total,
+      effectivePerKm: +(total / distanceKm).toFixed(1),
+      explanation: `₹${b.toFixed(0)} base covers 0–${bKm} km`,
+    }
+  }
+
+  const extraDistance = distanceKm - bKm
+  let distCharge = 0
+  let covered = 0
+
+  while (covered < extraDistance) {
+    const stepIndex = Math.floor(covered / sKm) + 1
+    const nextBoundary = Math.min(extraDistance, stepIndex * sKm)
+    const sliceKm = nextBoundary - covered
+
+    const discountFraction = (dPct / 100) * stepIndex
+    let rate = p * Math.max(0, 1 - discountFraction)
+    if (floorRate > 0) {
+      rate = Math.max(floorRate, rate)
+    }
+
+    distCharge += sliceKm * rate
+    covered = nextBoundary
+  }
+
+  const scaledDist = distCharge * mult
+  const calc = b + scaledDist
+  const total = Math.round(Math.max(minF, calc))
+  const effectivePerKm = +(total / distanceKm).toFixed(1)
+  const explanation = `Base ₹${b.toFixed(0)} + ₹${scaledDist.toFixed(0)} extra dist (${mult}x deadhead applied)`
+
+  return { total, effectivePerKm, explanation }
+}
+
 function RateInputs({
   fields,
   draft,
@@ -119,7 +213,17 @@ function RateInputs({
   return (
     <div className={`pricing-fare-grid ${canEdit ? 'pricing-fare-grid--editable' : ''}`}>
       {fields.map((key) => {
+        const unit = getFieldUnit(key)
         const isRadius = isRadiusField(key)
+        const stepVal =
+          key === 'outstation_deadhead_multiplier'
+            ? '0.05'
+            : key === 'outstation_step_discount_percent'
+            ? '0.5'
+            : isRadius
+            ? '1'
+            : '0.01'
+
         return (
           <label key={key} className="pricing-fare-field">
             <div className="pricing-fare-field__header">
@@ -131,9 +235,13 @@ function RateInputs({
             <div
               className={`pricing-fare-field__input-wrap ${
                 canEdit ? 'is-editable' : 'is-readonly'
-              } ${isRadius ? 'is-radius' : ''}`}
+              } ${unit ? 'is-radius' : ''}`}
             >
-              {isRadius ? (
+              {key === 'outstation_step_discount_percent' ? (
+                <Percent size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
+              ) : key === 'outstation_deadhead_multiplier' ? (
+                <RotateCcw size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
+              ) : isRadius ? (
                 <Route size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
               ) : (
                 <IndianRupee size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
@@ -141,15 +249,15 @@ function RateInputs({
               <input
                 type="number"
                 min="0"
-                step={isRadius ? '0.1' : '0.01'}
+                step={stepVal}
                 inputMode="decimal"
                 value={draft[key]}
                 onChange={(e) => onChange(key, e.target.value)}
                 disabled={!canEdit}
                 readOnly={!canEdit}
-                aria-label={`${RATE_LABELS[key]}${isRadius ? ' in kilometres' : ''}`}
+                aria-label={`${RATE_LABELS[key]}${unit ? ` in ${unit}` : ''}`}
               />
-              {isRadius ? <span className="pricing-radius-unit">km</span> : null}
+              {unit ? <span className="pricing-radius-unit">{unit}</span> : null}
               {canEdit ? (
                 <Pencil size={14} strokeWidth={1.75} className="pricing-fare-field__edit-icon" aria-hidden />
               ) : null}
@@ -243,6 +351,19 @@ export default function Pricing() {
         payload.outstation_base_fare_km = normalizeRate(draft.outstation_base_fare_km, 'Outstation base radius')
         payload.outstation_per_km_rate = normalizeRate(draft.outstation_per_km_rate, 'Outstation per km')
         payload.outstation_minimum_fare = normalizeRate(draft.outstation_minimum_fare, 'Outstation minimum fare')
+        payload.outstation_step_km = normalizeRate(draft.outstation_step_km || '10', 'Layer step interval')
+        payload.outstation_step_discount_percent = normalizeRate(
+          draft.outstation_step_discount_percent || '0',
+          'Layer discount %',
+        )
+        payload.outstation_deadhead_multiplier = normalizeRate(
+          draft.outstation_deadhead_multiplier || '1.00',
+          'Deadhead return multiplier',
+        )
+        payload.outstation_min_per_km_rate = normalizeRate(
+          draft.outstation_min_per_km_rate || '0',
+          'Rate floor',
+        )
         if (radiusDraft) {
           payload.outstation_threshold_km = normalizeRate(radiusDraft, 'Outstation distance threshold')
         }
@@ -350,13 +471,6 @@ export default function Pricing() {
 
   const label = customerVehicleLabel(activeCategory.name)
   const cityPreview = previewFare(draft.base_fare, draft.per_km_rate, draft.minimum_fare, draft.base_fare_km, 10)
-  const outstationPreview = previewFare(
-    draft.outstation_base_fare,
-    draft.outstation_per_km_rate,
-    draft.outstation_minimum_fare,
-    draft.outstation_base_fare_km,
-    80,
-  )
 
   return (
     <div className="pricing-page cy-page">
@@ -463,22 +577,75 @@ export default function Pricing() {
         </Card>
 
         {showOutstation ? (
-          <Card className="pricing-fare-section">
+          <Card className="pricing-fare-section pricing-outstation-card">
             <CardHeader
-              title={`${label} — Outstation`}
-              subtitle="Outstation rate for long-distance trips. Base fare covers base radius, then per km rate applies."
+              title={`${label} — Outstation & Return Deadhead`}
+              subtitle="Base outstation fare, stepped layer % discounts, and return deadhead cushion for empty return trips."
             />
             <CardBody>
-              <RateInputs
-                fields={OUTSTATION_FIELDS}
-                draft={draft}
-                canEdit={canEdit}
-                onChange={(field, value) => setDraft({ ...draft, [field]: value })}
-              />
-              <p className="pricing-preview">
-                Sample 80 km trip: <strong>{formatINR(outstationPreview.total)}</strong>{' '}
-                <span className="pricing-preview-detail">{outstationPreview.explanation}</span>
-              </p>
+              <div className="pricing-section-block">
+                <div className="pricing-block-title">
+                  <span>Base Outstation Slabs</span>
+                </div>
+                <RateInputs
+                  fields={OUTSTATION_BASE_FIELDS}
+                  draft={draft}
+                  canEdit={canEdit}
+                  onChange={(field, value) => setDraft({ ...draft, [field]: value })}
+                />
+              </div>
+
+              <div className="pricing-section-block pricing-section-block--layers">
+                <div className="pricing-block-title">
+                  <div className="pricing-block-title__text">
+                    <Sparkles size={15} className="pricing-icon-sparkle" />
+                    <span>Progressive Layers & Deadhead Cushion</span>
+                  </div>
+                  <span className="pricing-pill-badge">B2B / Long-Haul Safeguard</span>
+                </div>
+                <p className="pricing-block-subtext">
+                  After base radius, rates discount every layer block down to the rate floor.
+                  The deadhead multiplier cushions the return trip without cluttering the customer invoice.
+                </p>
+                <RateInputs
+                  fields={OUTSTATION_LAYER_FIELDS}
+                  draft={draft}
+                  canEdit={canEdit}
+                  onChange={(field, value) => setDraft({ ...draft, [field]: value })}
+                />
+              </div>
+
+              <div className="pricing-sim-box">
+                <div className="pricing-sim-header">
+                  <ShieldCheck size={16} className="pricing-sim-icon" />
+                  <span className="pricing-sim-title">
+                    Live Rate Simulation (Includes {draft.outstation_deadhead_multiplier || '1.35'}x Return Cushion)
+                  </span>
+                </div>
+                <div className="pricing-sim-grid">
+                  {[60, 80, 120].map((dist) => {
+                    const sim = simulateOutstationFare({
+                      base: draft.outstation_base_fare,
+                      baseKm: draft.outstation_base_fare_km,
+                      perKm: draft.outstation_per_km_rate,
+                      minimum: draft.outstation_minimum_fare,
+                      stepKm: draft.outstation_step_km,
+                      discountPct: draft.outstation_step_discount_percent,
+                      deadheadMult: draft.outstation_deadhead_multiplier,
+                      minRate: draft.outstation_min_per_km_rate,
+                      distanceKm: dist,
+                    })
+                    return (
+                      <div key={dist} className="pricing-sim-card">
+                        <div className="pricing-sim-card__dist">{dist} km Trip</div>
+                        <div className="pricing-sim-card__fare">{formatINR(sim.total)}</div>
+                        <div className="pricing-sim-card__rate">Effective ₹{sim.effectivePerKm}/km</div>
+                        <div className="pricing-sim-card__sub">{sim.explanation}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </CardBody>
           </Card>
         ) : null}
