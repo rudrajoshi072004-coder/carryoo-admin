@@ -171,6 +171,16 @@ export default function DriverDrawer({
                 </span>
               </div>
               <div className="drawer-field">
+                <span className="drawer-field__label">Mandatory Training</span>
+                <span className="drawer-field__value">
+                  {driver.trainingCompleted ? (
+                    <span style={{ color: "#16a34a", fontWeight: 700 }}>✓ Completed</span>
+                  ) : (
+                    <span style={{ color: "#d97706", fontWeight: 700 }}>Pending Induction</span>
+                  )}
+                </span>
+              </div>
+              <div className="drawer-field">
                 <span className="drawer-field__label">Rating</span>
                 <span className="drawer-field__value drawer-field__value--rating">
                   <Star size={13} fill="#f59e0b" color="#f59e0b" /> {driver.rating.toFixed(1)}
