@@ -3,11 +3,15 @@ export type DriverStatus = 'Online' | 'Busy' | 'Offline' | 'Suspended' | 'New' |
 export type DocStatus = 'Verified' | 'Pending' | 'Rejected' | 'Expired'
 
 export interface DriverDocument {
+  id?: string
   type: string
+  documentType?: string
   number: string
   status: DocStatus
   expiry: string
   url?: string
+  isDeviceCache?: boolean
+  fileKey?: string
 }
 
 export interface DriverTrip {

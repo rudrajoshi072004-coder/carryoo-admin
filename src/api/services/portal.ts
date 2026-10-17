@@ -39,12 +39,16 @@ export type PortalDriverRow = {
   registered_at?: string | null
   registration_status?: 'new' | 'kyc_pending' | 'approved' | 'rejected'
   documents?: Array<{
+    id?: string
     type: string
+    document_type?: string
     number: string
     status: string
     expiry: string
     file_url?: string
     url?: string
+    is_device_cache?: boolean
+    file_key?: string
   }>
   vehicle_details?: {
     make: string

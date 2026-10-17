@@ -48,15 +48,18 @@ export default function DocumentPreviewModal({
   const [hasError, setHasError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
+  const isLocalFileUri = Boolean(fileUrl && fileUrl.startsWith('file://'))
+  const validWebUrl = Boolean(fileUrl && !isLocalFileUri)
+
   // Reset viewport state when modal opens or URL changes
   useEffect(() => {
     if (open) {
       setZoom(100)
       setRotation(0)
       setHasError(false)
-      setIsLoading(Boolean(fileUrl))
+      setIsLoading(validWebUrl)
     }
-  }, [open, fileUrl])
+  }, [open, fileUrl, validWebUrl])
 
   // Handle escape key
   useEffect(() => {
@@ -176,15 +179,28 @@ export default function DocumentPreviewModal({
         {/* Content Body: Media Viewer + Metadata sidebar */}
         <div className="doc-modal-content">
           <main className="doc-modal-canvas">
-            {isPdf && fileUrl && !hasError ? (
+            {isLocalFileUri ? (
+              <div className="doc-canvas-empty">
+                <div className="doc-empty-icon-box" style={{ background: '#eff6ff', color: '#2563eb' }}>
+                  <ImageIcon size={48} strokeWidth={1.5} />
+                </div>
+                <h3>Mobile Device Capture</h3>
+                <p>
+                  This document was captured on the driver&apos;s mobile device. The local Android camera cache path was recorded during onboarding. Cloud synchronization will update this preview automatically once synced from the driver app.
+                </p>
+                <div style={{ marginTop: 14, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, color: '#475569', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                  {fileUrl}
+                </div>
+              </div>
+            ) : isPdf && validWebUrl && !hasError ? (
               <div className="doc-pdf-container">
                 <iframe
-                  src={fileUrl}
+                  src={fileUrl!}
                   title={title}
                   className="doc-pdf-frame"
                 />
               </div>
-            ) : fileUrl && !hasError ? (
+            ) : validWebUrl && !hasError ? (
               <div className="doc-image-viewport">
                 {isLoading && (
                   <div className="doc-canvas-loading">
@@ -193,7 +209,7 @@ export default function DocumentPreviewModal({
                   </div>
                 )}
                 <img
-                  src={fileUrl}
+                  src={fileUrl!}
                   alt={title}
                   className="doc-preview-image"
                   style={{
@@ -223,9 +239,9 @@ export default function DocumentPreviewModal({
                     ? 'The media link could not be loaded or network access timed out. Check connection or verify storage permission.'
                     : 'The driver or delivery partner has not yet uploaded a high-resolution file for this slot, or Cloudflare storage sync is in progress.'}
                 </p>
-                {fileUrl ? (
+                {validWebUrl ? (
                   <a
-                    href={fileUrl}
+                    href={fileUrl!}
                     target="_blank"
                     rel="noreferrer"
                     className="doc-empty-retry-link"

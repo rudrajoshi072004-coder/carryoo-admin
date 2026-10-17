@@ -13,10 +13,22 @@ import {
   Activity,
   Route,
   Eye,
+  Camera,
+  CreditCard,
+  Smartphone,
+  ShieldCheck,
 } from 'lucide-react'
 import DocumentPreviewModal from './DocumentPreviewModal'
 import type { Driver, DriverDocument } from '../data/driversData'
 import './DriverDrawer.css'
+
+function getDocIcon(type: string) {
+  const t = (type || '').toLowerCase()
+  if (t.includes('selfie') || t.includes('photo')) return <Camera size={13} />
+  if (t.includes('rc') || t.includes('registration') || t.includes('vehicle')) return <Car size={13} />
+  if (t.includes('pan') || t.includes('aadhaar') || t.includes('license') || t.includes('dl')) return <CreditCard size={13} />
+  return <FileText size={13} />
+}
 
 interface DriverDrawerProps {
   driver: Driver | null
@@ -192,44 +204,105 @@ export default function DriverDrawer({
           {/* Documents */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
-              <FileText size={15} /> Documents
+              <FileText size={15} /> KYC Verification Documents
             </h3>
-            <div className="drawer-table-wrap">
-              <table className="drawer-table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Number</th>
-                    <th>Expiry</th>
-                    <th>Status</th>
-                    <th>Preview</th>
-                  </tr>
-                </thead>
-                <tbody>
+
+            {driver.documents.length > 0 ? (
+              <>
+                <div className="drawer-docs-summary">
+                  <span className="drawer-docs-summary__text">
+                    <ShieldCheck size={14} color="#059669" />
+                    {driver.documents.length} Documents Submitted
+                  </span>
+                  <span
+                    className={`drawer-docs-summary__pill ${
+                      driver.documents.filter((d) => d.status === 'Verified').length === driver.documents.length
+                        ? ''
+                        : 'drawer-docs-summary__pill--pending'
+                    }`}
+                  >
+                    {driver.documents.filter((d) => d.status === 'Verified').length === driver.documents.length
+                      ? 'All Verified'
+                      : `${driver.documents.filter((d) => d.status === 'Verified').length}/${driver.documents.length} Verified`}
+                  </span>
+                </div>
+
+                <div className="drawer-docs-grid">
                   {driver.documents.map((doc) => (
-                    <tr key={doc.type}>
-                      <td>{doc.type}</td>
-                      <td className="drawer-mono">{doc.number}</td>
-                      <td>{doc.expiry}</td>
-                      <td>
+                    <div key={doc.type} className="drawer-doc-card">
+                      <div className="drawer-doc-card__head">
+                        <span className="drawer-doc-card__title" title={doc.type}>
+                          {getDocIcon(doc.type)}
+                          <span>{doc.type}</span>
+                        </span>
                         <span className={docStatusClass(doc.status)}>{doc.status}</span>
-                      </td>
-                      <td>
+                      </div>
+
+                      <div
+                        className="drawer-doc-card__preview"
+                        onClick={() => setSelectedDoc(doc)}
+                        title="Click to inspect document full screen"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setSelectedDoc(doc)
+                          }
+                        }}
+                      >
+                        {doc.url ? (
+                          <>
+                            <img src={doc.url} alt={doc.type} className="drawer-doc-card__img" />
+                            <div className="drawer-doc-card__overlay">
+                              <Eye size={13} />
+                              <span>Inspect</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="drawer-doc-card__placeholder">
+                            {doc.isDeviceCache ? (
+                              <>
+                                <Smartphone size={22} color="#2563eb" />
+                                <span className="drawer-doc-card__placeholder-label">Mobile Capture</span>
+                                <span className="drawer-doc-card__device-badge">App Upload</span>
+                              </>
+                            ) : (
+                              <>
+                                {getDocIcon(doc.type)}
+                                <span className="drawer-doc-card__placeholder-label">Document Photo</span>
+                                <span className="drawer-doc-card__placeholder-sub">Click to review details</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="drawer-doc-card__footer">
+                        <span className="drawer-doc-card__num" title={doc.number}>
+                          {doc.number && doc.number !== '—'
+                            ? doc.number
+                            : doc.isDeviceCache
+                              ? 'Device Photo'
+                              : 'Submitted'}
+                        </span>
                         <button
                           type="button"
-                          className="drawer-doc-view-btn"
+                          className="drawer-doc-card__btn"
                           title={`Inspect ${doc.type}`}
                           onClick={() => setSelectedDoc(doc)}
                         >
-                          <Eye size={13} />
+                          <Eye size={11} />
                           <span>View</span>
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </>
+            ) : (
+              <p className="drawer-section__meta">No documents uploaded yet.</p>
+            )}
           </section>
 
           {/* Wallet */}
@@ -451,9 +524,20 @@ export default function DriverDrawer({
           selectedDoc
             ? [
                 { label: 'Document Type', value: selectedDoc.type },
-                { label: 'Document Number', value: selectedDoc.number },
+                {
+                  label: 'Document Number',
+                  value:
+                    selectedDoc.number && selectedDoc.number !== '—'
+                      ? selectedDoc.number
+                      : selectedDoc.isDeviceCache
+                        ? 'Mobile Upload'
+                        : '—',
+                },
                 { label: 'Status', value: selectedDoc.status },
                 { label: 'Expiry Date', value: selectedDoc.expiry },
+                ...(selectedDoc.isDeviceCache
+                  ? [{ label: 'Upload Source', value: 'Mobile Camera Capture' }]
+                  : []),
                 { label: 'Driver Name', value: driver.name },
                 { label: 'Driver Phone', value: driver.phone },
                 { label: 'Vehicle', value: driver.vehicle },

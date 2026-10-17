@@ -1,6 +1,7 @@
 import { listBookings } from './bookings'
 import { listPayouts, listSupportTickets } from './ops'
 import { listPricingRules } from './pricingRules'
+import { API_BASE_URL } from '../client'
 import type { Booking } from '../types'
 import type { Driver, DriverStatus, DocStatus } from '../../data/driversData'
 import type { Customer } from '../../data/customersData'
@@ -243,19 +244,39 @@ function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
     trips,
     joined,
     wallet,
-    documents: (row.documents ?? []).map((doc) => ({
-      type: doc.type,
-      number: doc.number,
-      status: (doc.status === 'Verified'
-        ? 'Verified'
-        : doc.status === 'Rejected'
-          ? 'Rejected'
-          : doc.status === 'Expired'
-            ? 'Expired'
-            : 'Pending') as DocStatus,
-      expiry: doc.expiry,
-      url: doc.file_url || doc.url,
-    })),
+    documents: (row.documents ?? []).map((doc) => {
+      const rawUrl = doc.file_url || doc.url
+      let resolvedUrl: string | undefined = undefined
+      if (rawUrl && typeof rawUrl === 'string') {
+        if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('data:')) {
+          resolvedUrl = rawUrl
+        } else if (rawUrl.startsWith('/api/')) {
+          const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
+          resolvedUrl = `${apiOrigin}${rawUrl}`
+        }
+      }
+      const rawNum = String(doc.number ?? '').trim()
+      const isFileUri = rawNum.startsWith('file://') || String(doc.file_key ?? '').startsWith('file://')
+      const cleanNum = isFileUri || rawNum.startsWith('drivers/') ? '—' : (rawNum || '—')
+
+      return {
+        id: doc.id ? String(doc.id) : undefined,
+        type: doc.type,
+        documentType: doc.document_type,
+        number: cleanNum,
+        status: (doc.status === 'Verified'
+          ? 'Verified'
+          : doc.status === 'Rejected'
+            ? 'Rejected'
+            : doc.status === 'Expired'
+              ? 'Expired'
+              : 'Pending') as DocStatus,
+        expiry: doc.expiry || '—',
+        url: resolvedUrl,
+        isDeviceCache: isFileUri || Boolean(doc.is_device_cache),
+        fileKey: doc.file_key,
+      }
+    }),
     vehicleDetails: row.vehicle_details
       ? {
           ...row.vehicle_details,
