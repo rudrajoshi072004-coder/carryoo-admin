@@ -10,6 +10,7 @@ import Orders from './pages/Orders'
 import Customers from './pages/Customers'
 import Trips from './pages/Trips'
 import LiveTracking from './pages/LiveTracking'
+import ZonalMaps from './pages/ZonalMaps'
 import Payments from './pages/Payments'
 import Wallet from './pages/Wallet'
 import Documents from './pages/Documents'
@@ -39,6 +40,7 @@ export default function App() {
                 <Route path="orders" element={<Orders />} />
                 <Route path="trips" element={<Trips />} />
                 <Route path="live-tracking" element={<LiveTracking />} />
+                <Route path="zonal-maps" element={<ZonalMaps />} />
                 <Route path="payments" element={<Payments />} />
                 <Route path="wallet" element={<Wallet />} />
                 <Route path="documents" element={<Documents />} />

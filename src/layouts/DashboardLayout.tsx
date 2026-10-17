@@ -20,6 +20,7 @@ const pageTitles: Record<string, string> = {
   '/orders': 'Orders',
   '/trips': 'Trips',
   '/live-tracking': 'Live Tracking',
+  '/zonal-maps': 'Zonal Maps & Polygons',
   '/payments': 'Payments',
   '/wallet': 'Wallet',
   '/documents': 'Documents',

@@ -135,6 +135,65 @@ export type Booking = {
   drop_photo_url?: string
 }
 
+export type DirectionKey = 'north' | 'south' | 'east' | 'west'
+
+export interface DirectionalSectionConfig {
+  id: DirectionKey
+  name: string
+  direction: 'N' | 'S' | 'E' | 'W'
+  angle_deg?: number
+  active: boolean
+  dispatch_radius_km?: number
+  polygon_points: number[][]
+  target_drivers: number
+}
+
+export interface SectionDriverSummary {
+  id: string
+  name: string
+  phone?: string
+  lat: number
+  lng: number
+  status: 'Online' | 'Busy' | 'Offline'
+  is_available: boolean
+  speed_kmph?: number
+  updated_at?: string | null
+}
+
+export interface DirectionalSectionAvailability extends DirectionalSectionConfig {
+  driver_count: number
+  available_count: number
+  busy_count: number
+  availability_ratio: number
+  gradient_color: string
+  status_level: 'critical' | 'moderate' | 'optimal'
+  drivers: SectionDriverSummary[]
+}
+
+export interface ZoneAvailabilityResponse {
+  zone_id: string
+  zone_name: string
+  city_name: string
+  active: boolean
+  dispatch_radius_km: number
+  service_radius_km: number
+  polygon_coordinates: number[][]
+  center_point: [number, number]
+  sections: {
+    north: DirectionalSectionAvailability
+    east: DirectionalSectionAvailability
+    south: DirectionalSectionAvailability
+    west: DirectionalSectionAvailability
+  }
+  total_drivers: number
+  available_drivers: number
+  busy_drivers: number
+  target_quota: number
+  overall_availability_ratio: number
+  overall_gradient_color: string
+  overall_status: 'critical' | 'moderate' | 'optimal'
+}
+
 export type ServiceZone = {
   id: string
   city_name: string
@@ -142,6 +201,9 @@ export type ServiceZone = {
   active?: boolean
   service_radius_km?: string
   dispatch_radius_km?: string
+  polygon_coordinates?: number[][]
+  center_point?: [number, number]
+  directional_sections?: Record<DirectionKey, DirectionalSectionConfig>
 }
 
 export type ServiceZoneInput = {
@@ -151,6 +213,7 @@ export type ServiceZoneInput = {
   service_radius_km?: string
   dispatch_radius_km?: string
   polygon_points?: number[][]
+  directional_sections?: Record<DirectionKey, DirectionalSectionConfig>
 }
 
 export type SupportTicket = {
