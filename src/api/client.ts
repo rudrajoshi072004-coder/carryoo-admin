@@ -53,6 +53,12 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  const reqId = `admin-req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  config.headers['X-Request-ID'] = reqId
+  const method = (config.method || '').toUpperCase()
+  if (['POST', 'PUT', 'PATCH'].includes(method) && !config.headers['X-Idempotency-Key']) {
+    config.headers['X-Idempotency-Key'] = `admin-idem-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  }
   return config
 })
 
