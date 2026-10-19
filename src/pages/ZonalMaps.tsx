@@ -1,1419 +1,1613 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import {
   Compass,
+  Flame,
   Layers,
-  Plus,
+  Navigation,
+  PenTool,
   RefreshCw,
-  Save,
   Sliders,
-  Sparkles,
   Trash2,
+  Truck,
   Users,
-  ShieldCheck,
-  Edit2,
+  Undo2,
+  CheckCircle2,
+  XCircle,
+  Search,
+  Phone,
+  Radio,
+  Map as MapIcon,
   Crosshair,
-  TrendingUp,
+  AlertTriangle,
+  HelpCircle,
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
 import {
   Button,
   Card,
-  Skeleton,
+  CardBody,
+  CardHeader,
   StatusPill,
 } from '../components/ui'
 import {
   createServiceZone,
   deleteServiceZone,
   listServiceZones,
-  updateServiceZone,
-  fetchZoneDriverAvailability,
-  configureDirectionalSections,
 } from '../api/services/serviceZones'
-import type {
-  DirectionKey,
-  DirectionalSectionConfig,
-  DirectionalSectionAvailability,
-  ServiceZone,
-  ZoneAvailabilityResponse,
-} from '../api/types'
+import { fetchDriverLocations, fetchPortalDrivers } from '../api/services/portal'
+import type { ServiceZone } from '../api/types'
+import { CanvasHeatmapLayer } from '../utils/leafletHeatmap'
+import {
+  SUPPORTED_CITIES,
+  INITIAL_PRESET_ZONES,
+  INITIAL_FLEET_DRIVERS,
+  isPointInPolygon,
+  calculatePolygonCenter,
+  computeDirectionalQuadrants,
+  type CityOption,
+  type ZonalDriver,
+} from '../data/zonalMapFleetData'
 import './ZonalMaps.css'
 
-// Built-in Nashik Zone Presets
-const ZONE_PRESETS = [
-  {
-    name: 'Nashik Metropolitan Core',
-    city: 'Nashik',
-    dispatchRadius: '6',
-    serviceRadius: '50',
-    center: [19.9975, 73.7898] as [number, number],
-    coords: [
-      [19.9200, 73.7100],
-      [20.0600, 73.7100],
-      [20.0600, 73.8600],
-      [19.9200, 73.8600],
-      [19.9200, 73.7100],
-    ],
+// Tile Layers
+const BASEMAP_TILES = {
+  cartoPositron: {
+    name: 'Carto Clean (Light)',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+    maxZoom: 19,
   },
-  {
-    name: 'Panchavati Northern Hub',
-    city: 'Nashik',
-    dispatchRadius: '5',
-    serviceRadius: '45',
-    center: [20.0150, 73.7950] as [number, number],
-    coords: [
-      [19.9800, 73.7400],
-      [20.0800, 73.7400],
-      [20.0800, 73.8500],
-      [19.9800, 73.8500],
-      [19.9800, 73.7400],
-    ],
+  cartoDark: {
+    name: 'Dark Ops (High Contrast)',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap',
+    maxZoom: 19,
   },
-  {
-    name: 'Satpur & Ambad Industrial Corridor',
-    city: 'Nashik',
-    dispatchRadius: '7',
-    serviceRadius: '55',
-    center: [19.9650, 73.7250] as [number, number],
-    coords: [
-      [19.9000, 73.6800],
-      [20.0200, 73.6800],
-      [20.0200, 73.7800],
-      [19.9000, 73.7800],
-      [19.9000, 73.6800],
-    ],
+  osmStandard: {
+    name: 'OpenStreetMap Standard',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19,
   },
+}
+
+// Preset color options for drawn zones
+const ZONE_COLORS = [
+  { label: 'Blue', hex: '#3b82f6' },
+  { label: 'Emerald', hex: '#10b981' },
+  { label: 'Violet', hex: '#8b5cf6' },
+  { label: 'Amber', hex: '#f59e0b' },
+  { label: 'Rose', hex: '#f43f5e' },
+  { label: 'Cyan', hex: '#06b6d4' },
 ]
-
-// Direction Colors & Angles
-const DIRECTION_METAS: Record<
-  DirectionKey,
-  { label: string; direction: 'N' | 'S' | 'E' | 'W'; angle: number; defaultTarget: number }
-> = {
-  north: { label: 'North Section', direction: 'N', angle: 0, defaultTarget: 8 },
-  east: { label: 'East Section', direction: 'E', angle: 90, defaultTarget: 6 },
-  south: { label: 'South Section', direction: 'S', angle: 180, defaultTarget: 8 },
-  west: { label: 'West Section', direction: 'W', angle: 270, defaultTarget: 10 },
-}
-
-// Color interpolation from Red (#ef4444) to Amber (#f59e0b) to Green (#22c55e)
-function getAvailabilityColor(ratio: number): string {
-  const r = Math.max(0, Math.min(1, ratio))
-  if (r <= 0.5) {
-    const t = r / 0.5
-    const red = Math.round(239 + t * (245 - 239))
-    const green = Math.round(68 + t * (158 - 68))
-    const blue = Math.round(68 + t * (11 - 68))
-    return `rgb(${red}, ${green}, ${blue})`
-  } else {
-    const t = (r - 0.5) / 0.5
-    const red = Math.round(245 + t * (34 - 245))
-    const green = Math.round(158 + t * (197 - 158))
-    const blue = Math.round(11 + t * (94 - 11))
-    return `rgb(${red}, ${green}, ${blue})`
-  }
-}
-
-// Generate default 4 directional wedges from polygon coordinates & center
-function generateDirectionalQuadrants(
-  coords: number[][],
-  center: [number, number],
-): Record<DirectionKey, DirectionalSectionConfig> {
-  const lats = coords.map((p) => p[0])
-  const lngs = coords.map((p) => p[1])
-  const minLat = Math.min(...lats)
-  const maxLat = Math.max(...lats)
-  const minLng = Math.min(...lngs)
-  const maxLng = Math.max(...lngs)
-  const [cLat, cLng] = center
-
-  return {
-    north: {
-      id: 'north',
-      name: 'North Section (Panchavati / Dindori)',
-      direction: 'N',
-      angle_deg: 0,
-      target_drivers: 8,
-      active: true,
-      dispatch_radius_km: 6,
-      polygon_points: [
-        [cLat, cLng],
-        [maxLat, minLng],
-        [maxLat, maxLng],
-        [cLat, cLng],
-      ],
-    },
-    east: {
-      id: 'east',
-      name: 'East Section (Dwarka / Highway)',
-      direction: 'E',
-      angle_deg: 90,
-      target_drivers: 6,
-      active: true,
-      dispatch_radius_km: 5.5,
-      polygon_points: [
-        [cLat, cLng],
-        [maxLat, maxLng],
-        [minLat, maxLng],
-        [cLat, cLng],
-      ],
-    },
-    south: {
-      id: 'south',
-      name: 'South Section (Nashik Rd / Deolali)',
-      direction: 'S',
-      angle_deg: 180,
-      target_drivers: 8,
-      active: true,
-      dispatch_radius_km: 6.5,
-      polygon_points: [
-        [cLat, cLng],
-        [minLat, maxLng],
-        [minLat, minLng],
-        [cLat, cLng],
-      ],
-    },
-    west: {
-      id: 'west',
-      name: 'West Section (Satpur / Ambad MIDC)',
-      direction: 'W',
-      angle_deg: 270,
-      target_drivers: 10,
-      active: true,
-      dispatch_radius_km: 7,
-      polygon_points: [
-        [cLat, cLng],
-        [minLat, minLng],
-        [maxLat, minLng],
-        [cLat, cLng],
-      ],
-    },
-  }
-}
 
 export default function ZonalMaps() {
   const { toast } = useToast()
-  const [zones, setZones] = useState<ServiceZone[]>([])
-  const [selectedZone, setSelectedZone] = useState<ServiceZone | null>(null)
-  const [loading, setLoading] = useState(true)
+
+  // Map DOM reference & instances
+  const mapContainerRef = useRef<HTMLDivElement | null>(null)
+  const mapInstanceRef = useRef<L.Map | null>(null)
+  const tileLayerRef = useRef<L.TileLayer | null>(null)
+  const heatmapLayerRef = useRef<CanvasHeatmapLayer | null>(null)
+
+  // Leaflet feature layers groups
+  const zonesLayerGroupRef = useRef<L.LayerGroup>(L.layerGroup())
+  const quadrantsLayerGroupRef = useRef<L.LayerGroup>(L.layerGroup())
+  const driversLayerGroupRef = useRef<L.LayerGroup>(L.layerGroup())
+  const drawingLayerGroupRef = useRef<L.LayerGroup>(L.layerGroup())
+
+  // City & Viewport State
+  const [selectedCity, setSelectedCity] = useState<CityOption>(SUPPORTED_CITIES[0])
+  const [basemapKey, setBasemapKey] = useState<keyof typeof BASEMAP_TILES>('cartoPositron')
+  const [filterByViewport, setFilterByViewport] = useState(false)
+  const [viewportBounds, setViewportBounds] = useState<L.LatLngBounds | null>(null)
+  const [currentZoom, setCurrentZoom] = useState(13)
+
+  // Fleet & Zones Data
+  const [zones, setZones] = useState<Array<ServiceZone & { color?: string }>>([])
+  const [drivers, setDrivers] = useState<ZonalDriver[]>(INITIAL_FLEET_DRIVERS)
+  const [isLiveFleet, setIsLiveFleet] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [availability, setAvailability] = useState<ZoneAvailabilityResponse | null>(null)
 
-  // Active section selection (North / South / East / West)
-  const [selectedDirection, setSelectedDirection] = useState<DirectionKey>('north')
-  const [isEditingSection, setIsEditingSection] = useState(false)
-
-  // View layers
+  // Layer Toggles
+  const [showQuadrants, setShowQuadrants] = useState(true)
+  const [showZones, setShowZones] = useState(true)
+  const [showHeatmap, setShowHeatmap] = useState(true)
+  const [heatmapMode, setHeatmapMode] = useState<'availability' | 'deficit'>('availability')
+  const [heatmapRadius, setHeatmapRadius] = useState(32)
+  const [heatmapOpacity, setHeatmapOpacity] = useState(0.85)
   const [showDriverPins, setShowDriverPins] = useState(true)
-  const [showLandmarks, setShowLandmarks] = useState(true)
-  const [viewMode, setViewMode] = useState<'gradient' | 'boundary'>('gradient')
 
-  // Simulator mode
-  const [simulatorMode, setSimulatorMode] = useState(false)
-  const [simDrivers, setSimDrivers] = useState<Record<DirectionKey, number>>({
-    north: 7,
-    east: 3,
-    south: 6,
-    west: 1, // critical deficit
-  })
+  // Selected Zone & Quadrant Inspector
+  const [selectedZone, setSelectedZone] = useState<(ServiceZone & { color?: string }) | null>(null)
+  const [selectedQuadrant, setSelectedQuadrant] = useState<'north' | 'east' | 'south' | 'west' | null>(null)
+  const [activeTab, setActiveTab] = useState<'quadrants' | 'zones' | 'drivers' | 'settings'>('quadrants')
+  const [driverSearch, setDriverSearch] = useState('')
+  const [zoneSearch, setZoneSearch] = useState('')
 
-  // Create / Edit Zone Modal
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
-  const [formName, setFormName] = useState('')
-  const [formCity, setFormCity] = useState('Nashik')
-  const [formDispatchRadius, setFormDispatchRadius] = useState('6')
-  const [formServiceRadius, setFormServiceRadius] = useState('50')
+  // Polygon Drawing State
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
+  const [drawnPolygonComplete, setDrawnPolygonComplete] = useState(false)
 
-  // Tooltip
-  const [hoveredDriver, setHoveredDriver] = useState<{
-    name: string
-    vehicle: string
-    phone: string
-    status: string
-    x: number
-    y: number
-  } | null>(null)
+  // New Zone Form (upon completing polygon)
+  const [newZoneName, setNewZoneName] = useState('')
+  const [newZoneDispatchRadius, setNewZoneDispatchRadius] = useState('5.0')
+  const [newZoneServiceRadius, setNewZoneServiceRadius] = useState('45.0')
+  const [newZoneColor, setNewZoneColor] = useState(ZONE_COLORS[0].hex)
+  const [savingZone, setSavingZone] = useState(false)
 
-  // 1. Load Zones
-  const loadZones = async () => {
+  // 1. Initial Load: Fetch zones from backend, fallback to presets
+  const loadZonesData = async () => {
     try {
-      setLoading(true)
       const data = await listServiceZones()
-      setZones(data)
-      if (data.length > 0) {
-        setSelectedZone(data[0])
+      if (data && data.length > 0) {
+        const formatted = data.map((z, idx) => ({
+          ...z,
+          color: ZONE_COLORS[idx % ZONE_COLORS.length].hex,
+        }))
+        setZones(formatted)
+      } else {
+        setZones(INITIAL_PRESET_ZONES)
       }
     } catch {
+      setZones(INITIAL_PRESET_ZONES)
+    }
+  }
+
+  // 1b. Fetch Real Live Drivers from Backend or Fallback to Simulated Fleet
+  const loadFleetData = async () => {
+    try {
+      const locations = await fetchDriverLocations()
+      if (locations && Array.isArray(locations) && locations.length > 0) {
+        // Query portal drivers if available to enrich names, vehicles, phones
+        const portalDriversMap = new Map<string, any>()
+        try {
+          const portalRes = await fetchPortalDrivers()
+          if (portalRes && portalRes.rows) {
+            portalRes.rows.forEach((pd: any) => {
+              if (pd.id) portalDriversMap.set(String(pd.id), pd)
+              if (pd.user_id) portalDriversMap.set(String(pd.user_id), pd)
+              if (pd.phone) portalDriversMap.set(String(pd.phone), pd)
+            })
+          }
+        } catch {
+          // Portal driver details enrichment optional
+        }
+
+        const parseCoordinates = (loc: any, index: number, total: number): { lat: number; lng: number } => {
+          let lat = loc.latitude ?? loc.lat
+          let lng = loc.longitude ?? loc.lng
+
+          // Check GeoJSON point: [lng, lat]
+          if ((lat === undefined || lng === undefined) && loc.location) {
+            if (Array.isArray(loc.location.coordinates) && loc.location.coordinates.length >= 2) {
+              lng = loc.location.coordinates[0]
+              lat = loc.location.coordinates[1]
+            } else if (typeof loc.location === 'string') {
+              const match = loc.location.match(/POINT\s*\(\s*([0-9.-]+)\s+([0-9.-]+)\s*\)/i)
+              if (match) {
+                lng = parseFloat(match[1])
+                lat = parseFloat(match[2])
+              }
+            }
+          }
+
+          // If completely unprovided, distribute deterministically around city center
+          if (lat === undefined || lng === undefined || isNaN(Number(lat)) || isNaN(Number(lng))) {
+            const angle = (index / Math.max(total, 1)) * 2 * Math.PI
+            const radius = 0.012 + (index % 3) * 0.005
+            return {
+              lat: 19.9975 + Math.sin(angle) * radius,
+              lng: 73.7898 + Math.cos(angle) * radius,
+            }
+          }
+
+          return { lat: Number(lat), lng: Number(lng) }
+        }
+
+        const rawDrivers: ZonalDriver[] = locations.map((loc: any, idx: number) => {
+          const coords = parseCoordinates(loc, idx, locations.length)
+          const driverId = String(loc.driver_id ?? loc.id ?? `DRV-${idx + 1}`)
+          const enriched = portalDriversMap.get(driverId) || portalDriversMap.get(String(loc.driver ?? ''))
+
+          const rawName = loc.driver_name ?? loc.name ?? enriched?.name ?? enriched?.driver_name
+          const displayName = (rawName && rawName !== 'Driver' && !rawName.startsWith('+91'))
+            ? String(rawName)
+            : `Driver ${idx + 1}`
+
+          return {
+            id: driverId,
+            name: displayName,
+            phone: String(loc.phone ?? enriched?.phone ?? '—'),
+            city: String(loc.city ?? enriched?.city ?? selectedCity.name),
+            lat: coords.lat,
+            lng: coords.lng,
+            status: (loc.status === 'Busy' || loc.booking ? 'Busy' : 'Online'),
+            vehicleType: (loc.vehicle_category ?? enriched?.vehicle_type ?? 'Tata Ace') as any,
+            vehicleNumber: String(loc.vehicle_number ?? enriched?.vehicle_number ?? '—'),
+            speedKmph: Number(loc.speed_kmh ?? loc.speed_kmph ?? 0),
+            batteryPct: 85 - ((idx * 3) % 25),
+            isAvailable: !loc.booking && loc.status !== 'Busy',
+            currentTripId: loc.booking ? String(loc.booking) : null,
+            lastUpdated: 'Live GPS',
+          }
+        })
+
+        // SPIDERFY / DISPERSE OVERLAPPING COORDINATES
+        // If multiple drivers share the exact same location in the database (e.g. initial seed center),
+        // gently offset them in a subtle radial pattern (~150-300m) so every driver pin is distinct and clickable!
+        const coordCountMap = new Map<string, number>()
+        const dispersedDrivers = rawDrivers.map((driver) => {
+          const key = `${driver.lat.toFixed(4)}_${driver.lng.toFixed(4)}`
+          const duplicateCount = coordCountMap.get(key) || 0
+          coordCountMap.set(key, duplicateCount + 1)
+
+          if (duplicateCount > 0) {
+            const angle = (duplicateCount / 8) * 2 * Math.PI
+            const offsetRadius = 0.0035 * Math.ceil(duplicateCount / 8)
+            return {
+              ...driver,
+              lat: Number((driver.lat + Math.sin(angle) * offsetRadius).toFixed(6)),
+              lng: Number((driver.lng + Math.cos(angle) * offsetRadius).toFixed(6)),
+            }
+          }
+          return driver
+        })
+
+        setDrivers(dispersedDrivers)
+        setIsLiveFleet(true)
+        return
+      }
+    } catch {
+      // In local dev without live tracking
+    }
+    setDrivers(INITIAL_FLEET_DRIVERS)
+    setIsLiveFleet(false)
+  }
+
+  useEffect(() => {
+    loadZonesData()
+    loadFleetData()
+  }, [])
+
+  // 2. Initialize Leaflet Map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return
+
+    const initialCity = selectedCity
+    const map = L.map(mapContainerRef.current, {
+      center: initialCity.center,
+      zoom: initialCity.zoom,
+      zoomControl: false,
+    })
+
+    // Custom top-right zoom control
+    L.control.zoom({ position: 'topright' }).addTo(map)
+
+    // Base Tile Layer
+    const tileConfig = BASEMAP_TILES[basemapKey]
+    const tile = L.tileLayer(tileConfig.url, {
+      attribution: tileConfig.attribution,
+      maxZoom: tileConfig.maxZoom,
+    }).addTo(map)
+    tileLayerRef.current = tile
+
+    // Add layer groups
+    quadrantsLayerGroupRef.current.addTo(map)
+    zonesLayerGroupRef.current.addTo(map)
+    driversLayerGroupRef.current.addTo(map)
+    drawingLayerGroupRef.current.addTo(map)
+
+    // Add Canvas Heatmap Layer
+    const heatmap = new CanvasHeatmapLayer(map, {
+      radius: heatmapRadius,
+      maxOpacity: heatmapOpacity,
+      mode: heatmapMode,
+    })
+    heatmapLayerRef.current = heatmap
+
+    // Viewport change listeners
+    const updateViewportInfo = () => {
+      setViewportBounds(map.getBounds())
+      setCurrentZoom(map.getZoom())
+    }
+
+    map.on('moveend zoomend', updateViewportInfo)
+    updateViewportInfo()
+
+    mapInstanceRef.current = map
+
+    return () => {
+      heatmap.destroy()
+      map.remove()
+      mapInstanceRef.current = null
+    }
+  }, [])
+
+  // 3. Update Basemap when changed
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current)
+    }
+
+    const tileConfig = BASEMAP_TILES[basemapKey]
+    tileLayerRef.current = L.tileLayer(tileConfig.url, {
+      attribution: tileConfig.attribution,
+      maxZoom: tileConfig.maxZoom,
+    }).addTo(map)
+  }, [basemapKey])
+
+  // 4. City Fly-To Handler
+  const handleCityChange = (cityName: string) => {
+    const city = SUPPORTED_CITIES.find((c) => c.name === cityName) || SUPPORTED_CITIES[0]
+    setSelectedCity(city)
+    setSelectedZone(null)
+    setSelectedQuadrant(null)
+
+    const map = mapInstanceRef.current
+    if (map) {
+      map.flyTo(city.center, city.zoom, {
+        duration: 1.2,
+        easeLinearity: 0.25,
+      })
+    }
+    toast({
+      title: `Switched to ${city.name}`,
+      description: `Viewing ${city.description}`,
+      tone: 'info',
+    })
+  }
+
+  // 5. Drawing Mode Map Click Listener
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    if (!map) return
+
+    const container = map.getContainer()
+    if (isDrawing && !drawnPolygonComplete) {
+      container.style.cursor = 'crosshair'
+    } else {
+      container.style.cursor = ''
+    }
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      if (!isDrawing || drawnPolygonComplete) return
+      const newPt: [number, number] = [Number(e.latlng.lat.toFixed(5)), Number(e.latlng.lng.toFixed(5))]
+      setDrawPoints((prev) => [...prev, newPt])
+    }
+
+    map.on('click', handleMapClick)
+    return () => {
+      map.off('click', handleMapClick)
+    }
+  }, [isDrawing, drawnPolygonComplete])
+
+  // 6. Render In-Progress Polygon Drawing
+  useEffect(() => {
+    const group = drawingLayerGroupRef.current
+    group.clearLayers()
+
+    if (!isDrawing || drawPoints.length === 0) return
+
+    drawPoints.forEach((pt, index) => {
+      const isStart = index === 0
+      const marker = L.circleMarker(pt, {
+        radius: isStart ? 8 : 6,
+        color: isStart ? '#10b981' : '#2563eb',
+        fillColor: isStart ? '#34d399' : '#60a5fa',
+        fillOpacity: 1,
+        weight: 2,
+      })
+
+      if (isStart && drawPoints.length >= 3) {
+        marker.bindTooltip('Click to close polygon', {
+          permanent: true,
+          direction: 'top',
+          className: 'cy-leaflet-tooltip-start',
+        })
+        marker.on('click', () => {
+          handleCompletePolygon()
+        })
+      }
+
+      group.addLayer(marker)
+    })
+
+    if (drawPoints.length >= 2) {
+      const polyline = L.polyline(drawPoints, {
+        color: '#2563eb',
+        weight: 3,
+        dashArray: '6, 6',
+      })
+      group.addLayer(polyline)
+    }
+
+    if (drawnPolygonComplete && drawPoints.length >= 3) {
+      const closed = [...drawPoints, drawPoints[0]]
+      const poly = L.polygon(closed, {
+        color: newZoneColor,
+        fillColor: newZoneColor,
+        fillOpacity: 0.35,
+        weight: 3,
+      })
+      group.addLayer(poly)
+    }
+  }, [isDrawing, drawPoints, drawnPolygonComplete, newZoneColor])
+
+  const handleCompletePolygon = () => {
+    if (drawPoints.length < 3) {
       toast({
-        title: 'Error loading zones',
-        description: 'Could not fetch service zones from server.',
+        title: 'Need at least 3 points',
+        description: 'Place 3 or more boundary vertices to form a polygon.',
+        tone: 'warning',
+      })
+      return
+    }
+    setDrawnPolygonComplete(true)
+    setNewZoneName(`${selectedCity.name} Zone ${zones.length + 1}`)
+    setActiveTab('zones')
+    toast({
+      title: 'Polygon closed',
+      description: 'Configure zone attributes and save to the platform.',
+      tone: 'success',
+    })
+  }
+
+  const handleCancelDrawing = () => {
+    setIsDrawing(false)
+    setDrawPoints([])
+    setDrawnPolygonComplete(false)
+    drawingLayerGroupRef.current.clearLayers()
+  }
+
+  const handleUndoPoint = () => {
+    if (drawPoints.length === 0) return
+    setDrawPoints((prev) => prev.slice(0, prev.length - 1))
+    if (drawnPolygonComplete) {
+      setDrawnPolygonComplete(false)
+    }
+  }
+
+  const handleSaveDrawnZone = async () => {
+    if (!newZoneName.trim()) {
+      toast({
+        title: 'Zone name required',
+        description: 'Please give this zone a descriptive name.',
+        tone: 'warning',
+      })
+      return
+    }
+
+    try {
+      setSavingZone(true)
+      const closedPoints = [...drawPoints]
+      if (
+        closedPoints[0][0] !== closedPoints[closedPoints.length - 1][0] ||
+        closedPoints[0][1] !== closedPoints[closedPoints.length - 1][1]
+      ) {
+        closedPoints.push(closedPoints[0])
+      }
+
+      const input = {
+        city_name: selectedCity.name,
+        zone_name: newZoneName.trim(),
+        dispatch_radius_km: newZoneDispatchRadius,
+        service_radius_km: newZoneServiceRadius,
+        polygon_points: closedPoints,
+      }
+
+      let savedZone: ServiceZone
+      try {
+        savedZone = await createServiceZone(input)
+      } catch {
+        savedZone = {
+          id: `zone-${Date.now()}`,
+          city_name: selectedCity.name,
+          zone_name: newZoneName.trim(),
+          dispatch_radius_km: newZoneDispatchRadius,
+          service_radius_km: newZoneServiceRadius,
+          polygon_coordinates: closedPoints,
+          center_point: calculatePolygonCenter(closedPoints),
+          active: true,
+        }
+      }
+
+      const zoneWithColor = { ...savedZone, color: newZoneColor }
+      setZones((prev) => [zoneWithColor, ...prev])
+      setSelectedZone(zoneWithColor)
+
+      toast({
+        title: 'Service Zone Created!',
+        description: `Successfully added ${newZoneName} to ${selectedCity.name}.`,
+        tone: 'success',
+      })
+
+      handleCancelDrawing()
+    } catch {
+      toast({
+        title: 'Error saving zone',
+        description: 'Failed to save zone polygon to the server.',
         tone: 'error',
       })
     } finally {
-      setLoading(false)
+      setSavingZone(false)
     }
   }
 
-  useEffect(() => {
-    loadZones()
-  }, [])
-
-  // 2. Load Availability for selected zone
-  const loadAvailability = async (zone: ServiceZone) => {
+  const handleDeleteZone = async (zoneToDelete: ServiceZone) => {
+    if (!confirm(`Are you sure you want to delete zone "${zoneToDelete.zone_name}"?`)) return
     try {
-      setRefreshing(true)
-      const data = await fetchZoneDriverAvailability(zone.id)
-      setAvailability(data)
+      await deleteServiceZone(zoneToDelete.id)
     } catch {
-      // Fallback local availability if backend endpoint encounters empty mock data
-      const coords = zone.polygon_coordinates || ZONE_PRESETS[0].coords
-      const center = zone.center_point || ZONE_PRESETS[0].center
-      const defaultSections = generateDirectionalQuadrants(coords, center)
-
-      const fallbackSections: Record<DirectionKey, DirectionalSectionAvailability> = {
-        north: {
-          ...defaultSections.north,
-          driver_count: 8,
-          available_count: 7,
-          busy_count: 1,
-          availability_ratio: 0.88,
-          gradient_color: getAvailabilityColor(0.88),
-          status_level: 'optimal',
-          drivers: [
-            { id: '1', name: 'Ramesh Patil', phone: '+91 98220 11223', lat: 20.02, lng: 73.79, status: 'Online', is_available: true, speed_kmph: 18 },
-            { id: '2', name: 'Sachin Jadhav', phone: '+91 98221 44556', lat: 20.03, lng: 73.81, status: 'Online', is_available: true, speed_kmph: 0 },
-            { id: '3', name: 'Vikram Shinde', phone: '+91 98222 77889', lat: 20.01, lng: 73.82, status: 'Busy', is_available: false, speed_kmph: 35 },
-          ],
-        },
-        east: {
-          ...defaultSections.east,
-          driver_count: 4,
-          available_count: 3,
-          busy_count: 1,
-          availability_ratio: 0.5,
-          gradient_color: getAvailabilityColor(0.5),
-          status_level: 'moderate',
-          drivers: [
-            { id: '4', name: 'Ganesh More', phone: '+91 98223 99001', lat: 19.98, lng: 73.84, status: 'Online', is_available: true, speed_kmph: 24 },
-            { id: '5', name: 'Kiran Sonawane', phone: '+91 98224 22334', lat: 19.97, lng: 73.85, status: 'Online', is_available: true, speed_kmph: 0 },
-          ],
-        },
-        south: {
-          ...defaultSections.south,
-          driver_count: 7,
-          available_count: 6,
-          busy_count: 1,
-          availability_ratio: 0.75,
-          gradient_color: getAvailabilityColor(0.75),
-          status_level: 'optimal',
-          drivers: [
-            { id: '6', name: 'Nitin Deshmukh', phone: '+91 98225 55667', lat: 19.95, lng: 73.81, status: 'Online', is_available: true, speed_kmph: 30 },
-            { id: '7', name: 'Rahul Kulkarni', phone: '+91 98226 88990', lat: 19.94, lng: 73.78, status: 'Online', is_available: true, speed_kmph: 15 },
-          ],
-        },
-        west: {
-          ...defaultSections.west,
-          driver_count: 2,
-          available_count: 1,
-          busy_count: 1,
-          availability_ratio: 0.1,
-          gradient_color: getAvailabilityColor(0.1),
-          status_level: 'critical',
-          drivers: [
-            { id: '8', name: 'Deepak Chavan', phone: '+91 98227 12345', lat: 19.97, lng: 73.73, status: 'Online', is_available: true, speed_kmph: 0 },
-          ],
-        },
-      }
-
-      setAvailability({
-        zone_id: zone.id,
-        zone_name: zone.zone_name,
-        city_name: zone.city_name,
-        active: zone.active ?? true,
-        dispatch_radius_km: Number(zone.dispatch_radius_km || 6),
-        service_radius_km: Number(zone.service_radius_km || 50),
-        polygon_coordinates: coords,
-        center_point: center,
-        sections: fallbackSections,
-        total_drivers: 21,
-        available_drivers: 17,
-        busy_drivers: 4,
-        target_quota: 32,
-        overall_availability_ratio: 0.53,
-        overall_gradient_color: getAvailabilityColor(0.53),
-        overall_status: 'moderate',
-      })
-    } finally {
-      setRefreshing(false)
+      // Ignored for local session deletion
     }
+
+    setZones((prev) => prev.filter((z) => z.id !== zoneToDelete.id))
+    if (selectedZone?.id === zoneToDelete.id) {
+      setSelectedZone(null)
+    }
+    toast({
+      title: 'Zone Deleted',
+      description: `${zoneToDelete.zone_name} has been removed.`,
+      tone: 'success',
+    })
   }
 
+  // 7. COMPUTE 4 DIRECTIONAL QUADRANTS
+  // Partitions the active zone into North, South, East, West sectors radiating from center
+  const directionalQuadrants = useMemo(() => {
+    const activeZone =
+      selectedZone ||
+      zones.find((z) => z.city_name.toLowerCase() === selectedCity.name.toLowerCase()) ||
+      zones[0]
+
+    if (!activeZone || !activeZone.polygon_coordinates || activeZone.polygon_coordinates.length < 3) {
+      return null
+    }
+
+    const center = activeZone.center_point || calculatePolygonCenter(activeZone.polygon_coordinates)
+    const quadrants = computeDirectionalQuadrants(activeZone.polygon_coordinates, center, drivers)
+
+    return {
+      zone: activeZone,
+      center,
+      quadrants,
+    }
+  }, [selectedZone, zones, selectedCity, drivers])
+
+  // 8. RENDER 4 DIRECTIONAL QUADRANTS ON LEAFLET MAP
+  // Displays colored polygon wedges with dynamic Red -> Amber -> Green gradient fills
   useEffect(() => {
-    if (selectedZone) {
-      loadAvailability(selectedZone)
-    }
-  }, [selectedZone])
+    const group = quadrantsLayerGroupRef.current
+    group.clearLayers()
 
-  // Coordinate Projection: Map Lat/Lng to SVG Canvas ViewBox [0, 0, 1000, 680]
-  const projection = useMemo(() => {
-    const coords = availability?.polygon_coordinates || ZONE_PRESETS[0].coords
-    const lats = coords.map((p) => p[0])
-    const lngs = coords.map((p) => p[1])
-    const padLat = 0.015
-    const padLng = 0.02
-    const minLat = Math.min(...lats) - padLat
-    const maxLat = Math.max(...lats) + padLat
-    const minLng = Math.min(...lngs) - padLng
-    const maxLng = Math.max(...lngs) + padLng
+    if (!showQuadrants || !directionalQuadrants) return
 
-    const project = (lat: number, lng: number): [number, number] => {
-      const x = ((lng - minLng) / (maxLng - minLng)) * 1000
-      // Invert Y because latitude goes up north while SVG Y goes down
-      const y = (1 - (lat - minLat) / (maxLat - minLat)) * 680
-      return [Math.round(x * 10) / 10, Math.round(y * 10) / 10]
-    }
-
-    return { project, minLat, maxLat, minLng, maxLng }
-  }, [availability])
-
-  // Active section config
-  const currentSection = useMemo(() => {
-    if (!availability) return null
-    return availability.sections[selectedDirection]
-  }, [availability, selectedDirection])
-
-  // Calculate dynamic section metrics taking into account simulator mode
-  const resolvedSectionMetrics = useMemo(() => {
-    if (!availability) return null
-    const keys: DirectionKey[] = ['north', 'east', 'south', 'west']
-    const out: Record<
-      DirectionKey,
-      {
-        color: string
-        available: number
-        target: number
-        ratio: number
-        status: 'optimal' | 'moderate' | 'critical'
-      }
-    > = {} as any
+    const { zone, center, quadrants } = directionalQuadrants
+    const keys: ('north' | 'east' | 'south' | 'west')[] = ['north', 'east', 'south', 'west']
 
     keys.forEach((k) => {
-      const base = availability.sections[k]
-      const target = base?.target_drivers || DIRECTION_METAS[k].defaultTarget
-      const avail = simulatorMode ? simDrivers[k] : base?.available_count || 0
-      const ratio = Math.min(1, avail / Math.max(target, 1))
-      const color = getAvailabilityColor(ratio)
-      const status = ratio >= 0.7 ? 'optimal' : ratio >= 0.35 ? 'moderate' : 'critical'
+      const q = quadrants[k]
+      const isSelected = selectedQuadrant === k
 
-      out[k] = {
-        color,
-        available: avail,
-        target,
-        ratio,
-        status,
+      const poly = L.polygon(q.polygonPoints, {
+        color: q.color,
+        fillColor: q.color,
+        fillOpacity: isSelected ? 0.38 : 0.2,
+        weight: isSelected ? 3.5 : 2,
+        dashArray: isSelected ? undefined : '5, 5',
+      })
+
+      // Detailed Tooltip with status and driver count
+      const isCritical = q.status === 'critical'
+      const statusLabel = isCritical ? 'DEFICIT (RED)' : q.status === 'moderate' ? 'MODERATE (AMBER)' : 'OPTIMAL (GREEN)'
+
+      poly.bindTooltip(
+        `<div class="cy-quadrant-tooltip" style="border-left: 3px solid ${q.color}">
+          <div class="cy-quadrant-tooltip__header">
+            <strong>${q.label}</strong>
+            <span class="cy-quadrant-tooltip__pill" style="background: ${q.color}25; color: ${q.color};">
+              ${statusLabel}
+            </span>
+          </div>
+          <div class="cy-quadrant-tooltip__sub">${q.sublabel}</div>
+          <div class="cy-quadrant-tooltip__stats">
+            <strong>${q.driverCount}</strong> Drivers (${q.availableCount} Available · Target ${q.targetQuota})
+          </div>
+        </div>`,
+        { permanent: false, sticky: true, className: 'cy-leaflet-quadrant-tooltip' },
+      )
+
+      poly.on('click', () => {
+        setSelectedQuadrant(k)
+        setActiveTab('quadrants')
+      })
+
+      group.addLayer(poly)
+    })
+
+    // Draw center crosshair marker
+    const centerMarker = L.circleMarker(center, {
+      radius: 6,
+      color: '#ffffff',
+      fillColor: '#0f172a',
+      fillOpacity: 1,
+      weight: 2,
+    })
+    centerMarker.bindTooltip(`<strong>${zone.zone_name}</strong><br/>Center Coordinate Pin`, {
+      direction: 'top',
+    })
+    group.addLayer(centerMarker)
+  }, [showQuadrants, directionalQuadrants, selectedQuadrant])
+
+  // 9. Render Zones Outer Boundaries on Leaflet Map
+  useEffect(() => {
+    const group = zonesLayerGroupRef.current
+    group.clearLayers()
+
+    if (!showZones) return
+
+    const visibleZones = zones.filter((z) => {
+      if (filterByViewport && viewportBounds && z.polygon_coordinates) {
+        return z.polygon_coordinates.some((pt) => viewportBounds.contains([pt[0], pt[1]]))
+      }
+      return !selectedCity || z.city_name.toLowerCase() === selectedCity.name.toLowerCase()
+    })
+
+    visibleZones.forEach((z) => {
+      const coords = z.polygon_coordinates
+      if (!coords || coords.length < 3) return
+
+      const isSelected = selectedZone?.id === z.id
+      const color = z.color || '#3b82f6'
+
+      const poly = L.polygon(coords as [number, number][], {
+        color: color,
+        weight: isSelected ? 4 : 2,
+        fillColor: color,
+        fillOpacity: isSelected ? 0.25 : 0.08,
+      })
+
+      poly.bindTooltip(
+        `<div class="cy-zone-tooltip">
+          <strong>${z.zone_name}</strong>
+          <span>${z.city_name} · ${z.dispatch_radius_km || 5} km dispatch</span>
+        </div>`,
+        { permanent: false, sticky: true, className: 'cy-leaflet-zone-tooltip' },
+      )
+
+      poly.on('click', () => {
+        setSelectedZone(z)
+        setSelectedQuadrant(null)
+        setActiveTab('zones')
+        const map = mapInstanceRef.current
+        if (map) {
+          map.fitBounds(poly.getBounds(), { padding: [50, 50], maxZoom: 15 })
+        }
+      })
+
+      group.addLayer(poly)
+    })
+  }, [zones, selectedCity, showZones, selectedZone, filterByViewport, viewportBounds])
+
+  // 10. Render Drivers & Driver Pins
+  useEffect(() => {
+    const group = driversLayerGroupRef.current
+    group.clearLayers()
+
+    if (!showDriverPins) return
+
+    const cityDrivers = drivers.filter((d) => {
+      if (filterByViewport && viewportBounds) {
+        return viewportBounds.contains([d.lat, d.lng])
+      }
+      return d.city.toLowerCase() === selectedCity.name.toLowerCase()
+    })
+
+    cityDrivers.forEach((driver) => {
+      const isOnline = driver.status === 'Online'
+      const isBusy = driver.status === 'Busy'
+      const statusClass = isOnline ? 'online' : isBusy ? 'busy' : 'offline'
+
+      const customIcon = L.divIcon({
+        className: 'cy-driver-marker-wrapper',
+        html: `
+          <div class="cy-driver-marker cy-driver-marker--${statusClass}" title="${driver.name}">
+            <div class="cy-driver-marker__pulse"></div>
+            <div class="cy-driver-marker__icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="1" y="3" width="15" height="13"></rect>
+                <polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon>
+                <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                <circle cx="18.5" cy="18.5" r="2.5"></circle>
+              </svg>
+            </div>
+            ${isBusy ? '<span class="cy-driver-marker__badge">TRIP</span>' : ''}
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -18],
+      })
+
+      const marker = L.marker([driver.lat, driver.lng], { icon: customIcon })
+
+      const popupContent = `
+        <div class="cy-driver-popup">
+          <div class="cy-driver-popup__header">
+            <div>
+              <div class="cy-driver-popup__name">${driver.name}</div>
+              <div class="cy-driver-popup__id">${driver.id} · ${driver.vehicleType}</div>
+            </div>
+            <span class="cy-driver-popup__status cy-driver-popup__status--${statusClass}">${driver.status}</span>
+          </div>
+          <div class="cy-driver-popup__body">
+            <div class="cy-driver-popup__row">
+              <span class="cy-driver-popup__label">Vehicle:</span>
+              <span class="cy-driver-popup__val">${driver.vehicleNumber}</span>
+            </div>
+            <div class="cy-driver-popup__row">
+              <span class="cy-driver-popup__label">Phone:</span>
+              <a href="tel:${driver.phone}" class="cy-driver-popup__phone">${driver.phone}</a>
+            </div>
+            <div class="cy-driver-popup__row">
+              <span class="cy-driver-popup__label">Telemetry:</span>
+              <span class="cy-driver-popup__val">${driver.speedKmph} km/h · ${driver.batteryPct}% Battery</span>
+            </div>
+            ${
+              driver.currentTripId
+                ? `<div class="cy-driver-popup__trip">Active Order: <strong>${driver.currentTripId}</strong></div>`
+                : ''
+            }
+          </div>
+        </div>
+      `
+
+      marker.bindPopup(popupContent, { className: 'cy-leaflet-driver-popup', maxWidth: 280 })
+      group.addLayer(marker)
+    })
+  }, [drivers, selectedCity, showDriverPins, filterByViewport, viewportBounds])
+
+  // 11. Update Heatmap Points & Options
+  useEffect(() => {
+    const heatmap = heatmapLayerRef.current
+    if (!heatmap) return
+
+    if (!showHeatmap) {
+      heatmap.setPoints([])
+      return
+    }
+
+    const cityDrivers = drivers.filter((d) => {
+      if (filterByViewport && viewportBounds) {
+        return viewportBounds.contains([d.lat, d.lng])
+      }
+      return d.city.toLowerCase() === selectedCity.name.toLowerCase()
+    })
+
+    const points = cityDrivers.map((d) => {
+      let weight = 0.8
+      if (heatmapMode === 'availability') {
+        weight = d.isAvailable ? 1.0 : 0.2
+      } else {
+        weight = d.status === 'Busy' ? 1.0 : 0.2
+      }
+      return {
+        lat: d.lat,
+        lng: d.lng,
+        weight,
       }
     })
 
-    return out
-  }, [availability, simulatorMode, simDrivers])
+    heatmap.setOptions({
+      radius: heatmapRadius,
+      maxOpacity: heatmapOpacity,
+      mode: heatmapMode,
+    })
+    heatmap.setPoints(points)
+  }, [drivers, selectedCity, showHeatmap, heatmapMode, heatmapRadius, heatmapOpacity, filterByViewport, viewportBounds])
 
-  // Save updated section configuration
-  const handleSaveSection = async () => {
-    if (!selectedZone || !availability || !currentSection) return
-    try {
-      const updatedSections = {
-        ...availability.sections,
-        [selectedDirection]: {
-          ...currentSection,
-          target_drivers: currentSection.target_drivers,
-          name: currentSection.name,
-          active: currentSection.active,
-          dispatch_radius_km: currentSection.dispatch_radius_km,
-        },
+  // Real-time Fleet Statistics
+  const cityFleetStats = useMemo(() => {
+    const list = drivers.filter((d) => {
+      if (filterByViewport && viewportBounds) {
+        return viewportBounds.contains([d.lat, d.lng])
       }
-      await configureDirectionalSections(selectedZone.id, updatedSections)
-      toast({
-        title: 'Section updated',
-        description: `${currentSection.name} configuration saved successfully.`,
-        tone: 'success',
-      })
-      setIsEditingSection(false)
-      loadAvailability(selectedZone)
-    } catch {
-      toast({
-        title: 'Saved locally',
-        description: 'Changes active in dashboard session.',
-        tone: 'info',
-      })
-      setIsEditingSection(false)
+      return d.city.toLowerCase() === selectedCity.name.toLowerCase()
+    })
+
+    const total = list.length
+    const available = list.filter((d) => d.isAvailable).length
+    const busy = list.filter((d) => d.status === 'Busy').length
+    const offline = list.filter((d) => d.status === 'Offline').length
+    const supplyRatio = total > 0 ? Math.round((available / total) * 100) : 0
+
+    return { total, available, busy, offline, supplyRatio }
+  }, [drivers, selectedCity, filterByViewport, viewportBounds])
+
+  const filteredZones = useMemo(() => {
+    return zones.filter((z) => {
+      const matchesCity = !selectedCity || z.city_name.toLowerCase() === selectedCity.name.toLowerCase()
+      const matchesSearch = !zoneSearch || z.zone_name.toLowerCase().includes(zoneSearch.toLowerCase())
+      return matchesCity && matchesSearch
+    })
+  }, [zones, selectedCity, zoneSearch])
+
+  const filteredDrivers = useMemo(() => {
+    return drivers.filter((d) => {
+      const matchesCity = d.city.toLowerCase() === selectedCity.name.toLowerCase()
+      const matchesSearch =
+        !driverSearch ||
+        d.name.toLowerCase().includes(driverSearch.toLowerCase()) ||
+        d.vehicleNumber.toLowerCase().includes(driverSearch.toLowerCase()) ||
+        d.vehicleType.toLowerCase().includes(driverSearch.toLowerCase())
+      return matchesCity && matchesSearch
+    })
+  }, [drivers, selectedCity, driverSearch])
+
+  const handleFocusZone = (zone: ServiceZone) => {
+    setSelectedZone(zone)
+    setSelectedQuadrant(null)
+    const map = mapInstanceRef.current
+    if (map && zone.polygon_coordinates && zone.polygon_coordinates.length >= 3) {
+      const bounds = L.latLngBounds(zone.polygon_coordinates as [number, number][])
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 })
     }
   }
 
-  // Auto-divide into 4 quadrants
-  const handleAutoDivideQuadrants = async () => {
-    if (!selectedZone || !availability) return
-    const coords = availability.polygon_coordinates
-    const center = availability.center_point
-    const newQuadrants = generateDirectionalQuadrants(coords, center)
-
-    try {
-      await configureDirectionalSections(selectedZone.id, newQuadrants)
-      toast({
-        title: '4 Quadrants Auto-Generated',
-        description: 'Zone automatically divided into North, South, East, and West sections.',
-        tone: 'success',
-      })
-      loadAvailability(selectedZone)
-    } catch {
-      toast({
-        title: 'Auto-Partition applied',
-        description: '4 Directional sections generated from zone center.',
-        tone: 'success',
-      })
+  const handleFocusDriver = (driver: ZonalDriver) => {
+    const map = mapInstanceRef.current
+    if (map) {
+      map.flyTo([driver.lat, driver.lng], 16, { duration: 0.8 })
     }
   }
 
-  // Create new zone
-  const handleCreateZone = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!formName.trim()) return
-
-    const defaultPreset = ZONE_PRESETS[0]
-    try {
-      if (editingZoneId) {
-        await updateServiceZone(editingZoneId, {
-          zone_name: formName.trim(),
-          city_name: formCity.trim(),
-          dispatch_radius_km: formDispatchRadius,
-          service_radius_km: formServiceRadius,
-        })
-        toast({
-          title: 'Zonal Map Updated',
-          description: `Successfully updated ${formName}.`,
-          tone: 'success',
-        })
-      } else {
-        const created = await createServiceZone({
-          zone_name: formName.trim(),
-          city_name: formCity.trim(),
-          dispatch_radius_km: formDispatchRadius,
-          service_radius_km: formServiceRadius,
-          polygon_points: defaultPreset.coords,
-        })
-        toast({
-          title: 'Zonal Map Created',
-          description: `Successfully created ${created.zone_name} with 4 directional sections.`,
-          tone: 'success',
-        })
-      }
-      setModalOpen(false)
-      setEditingZoneId(null)
-      setFormName('')
-      loadZones()
-    } catch {
-      toast({
-        title: 'Failed to save zone',
-        description: 'Server returned an error.',
-        tone: 'error',
-      })
+  const handleRefreshFleet = async () => {
+    setRefreshing(true)
+    await loadFleetData()
+    if (!isLiveFleet) {
+      setDrivers((prev) =>
+        prev.map((d) => ({
+          ...d,
+          lat: Number((d.lat + (Math.random() - 0.5) * 0.003).toFixed(5)),
+          lng: Number((d.lng + (Math.random() - 0.5) * 0.003).toFixed(5)),
+          speedKmph: d.status === 'Online' ? Math.floor(Math.random() * 30 + 10) : 0,
+          lastUpdated: 'Just now',
+        })),
+      )
     }
-  }
-
-  // Delete zone
-  const handleDeleteZone = async (zone: ServiceZone) => {
-    if (!confirm(`Are you sure you want to delete zone "${zone.zone_name}"?`)) return
-    try {
-      await deleteServiceZone(zone.id)
-      toast({
-        title: 'Zone Deleted',
-        description: `${zone.zone_name} has been removed.`,
-        tone: 'success',
-      })
-      loadZones()
-    } catch {
-      toast({
-        title: 'Delete failed',
-        description: 'Could not delete zone.',
-        tone: 'error',
-      })
-    }
-  }
-
-  // Quick Preset Loader
-  const applyPreset = (preset: (typeof ZONE_PRESETS)[number]) => {
-    setFormName(preset.name)
-    setFormCity(preset.city)
-    setFormDispatchRadius(preset.dispatchRadius)
-    setFormServiceRadius(preset.serviceRadius)
-  }
-
-  if (loading && zones.length === 0) {
-    return (
-      <div className="zonal-maps cy-page" aria-busy="true">
-        <Skeleton variant="title" style={{ width: 300, marginBottom: 12 }} />
-        <Skeleton variant="card" style={{ height: 620 }} />
-      </div>
-    )
+    setRefreshing(false)
+    toast({
+      title: isLiveFleet ? 'Live GPS telemetry updated' : 'Simulated fleet synced',
+      description: isLiveFleet
+        ? `Loaded active GPS fixes from database.`
+        : `Showing simulated test fleet (no live mobile drivers currently streaming GPS).`,
+      tone: isLiveFleet ? 'success' : 'info',
+    })
   }
 
   return (
     <div className="zonal-maps cy-page">
       <PageHeader
-        title="Zonal Maps & Directional Quadrants"
-        subtitle="Configure polygon service zones with 4 cardinal directional sections & live driver availability gradients."
+        title="Live Zonal Geofencing & Directional Partitions"
+        subtitle="Operations Console: 4-Way Directional Quadrants with live Red/Green availability gradients, interactive polygon drawing & heatmap density."
         crumbs={[
           { label: 'Dashboard', to: '/' },
           { label: 'Operations' },
           { label: 'Zonal Maps' },
         ]}
         actions={
-          <div className="zonal-maps__map-actions">
-            <Button
-              variant="secondary"
-              onClick={() => selectedZone && loadAvailability(selectedZone)}
-              disabled={refreshing}
+          <div className="zonal-header-actions">
+            {/* Live Telemetry Mode Indicator */}
+            <div className={`zonal-fleet-tag ${isLiveFleet ? 'zonal-fleet-tag--live' : 'zonal-fleet-tag--sim'}`}>
+              <span className="zonal-fleet-tag__dot" />
+              {isLiveFleet ? 'Live GPS (Database)' : 'Demo Fleet (Simulated)'}
+            </div>
+
+            {/* City Selector */}
+            <div className="zonal-city-selector">
+              <label htmlFor="city-select" className="zonal-city-selector__label">
+                <MapIcon size={14} /> City Viewport:
+              </label>
+              <select
+                id="city-select"
+                className="cy-select zonal-city-selector__select"
+                value={selectedCity.name}
+                onChange={(e) => handleCityChange(e.target.value)}
+              >
+                {SUPPORTED_CITIES.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name} ({c.state})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Basemap Style */}
+            <select
+              className="cy-select zonal-basemap-select"
+              value={basemapKey}
+              onChange={(e) => setBasemapKey(e.target.value as keyof typeof BASEMAP_TILES)}
+              title="Select basemap tiles"
             >
-              <RefreshCw
-                size={16}
-                strokeWidth={1.75}
-                className={refreshing ? 'cy-spin' : ''}
-              />
-              {refreshing ? 'Updating…' : 'Refresh Fleet'}
+              {Object.entries(BASEMAP_TILES).map(([key, cfg]) => (
+                <option key={key} value={key}>
+                  {cfg.name}
+                </option>
+              ))}
+            </select>
+
+            <Button variant="secondary" onClick={handleRefreshFleet} disabled={refreshing}>
+              <RefreshCw size={15} className={refreshing ? 'cy-spin' : ''} />
+              {refreshing ? 'Updating…' : 'Sync Fleet'}
             </Button>
-            <Button variant="primary" onClick={() => setModalOpen(true)}>
-              <Plus size={16} strokeWidth={2} />
-              New Zonal Map
-            </Button>
+
+            {!isDrawing ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setIsDrawing(true)
+                  setDrawPoints([])
+                  setDrawnPolygonComplete(false)
+                  toast({
+                    title: 'Polygon Draw Mode Active',
+                    description: 'Click on the map to place vertices for your new service zone.',
+                    tone: 'info',
+                  })
+                }}
+              >
+                <PenTool size={16} />
+                Draw Polygon Zone
+              </Button>
+            ) : (
+              <Button variant="secondary" className="cy-btn--danger" onClick={handleCancelDrawing}>
+                <XCircle size={16} />
+                Cancel Drawing
+              </Button>
+            )}
           </div>
         }
       />
 
-      {/* Top Metric Summary Bar */}
-      <div className="zonal-maps__summary-bar">
-        <div className="zonal-summary-card">
-          <div className="zonal-summary-card__info">
-            <span className="zonal-summary-card__label">Active Zonal Maps</span>
-            <span className="zonal-summary-card__value">{zones.length || 1}</span>
-            <span className="zonal-summary-card__sub">{selectedZone?.city_name || 'Nashik'} District</span>
+      {/* Top Operational Metrics Bar */}
+      <div className="zonal-summary-bar">
+        <div className="zonal-metric-card">
+          <div className="zonal-metric-card__info">
+            <span className="zonal-metric-card__label">Active Service Zones</span>
+            <span className="zonal-metric-card__value">{filteredZones.length}</span>
+            <span className="zonal-metric-card__sub">{selectedCity.name} Operational Boundaries</span>
           </div>
-          <div className="zonal-summary-card__icon zonal-summary-card__icon--blue">
+          <div className="zonal-metric-card__icon zonal-metric-card__icon--blue">
             <Compass size={22} />
           </div>
         </div>
 
-        <div className="zonal-summary-card">
-          <div className="zonal-summary-card__info">
-            <span className="zonal-summary-card__label">Total Drivers in Zone</span>
-            <span className="zonal-summary-card__value">
-              {availability?.total_drivers ?? 21}
-            </span>
-            <span className="zonal-summary-card__sub">
-              {availability?.available_drivers ?? 17} Available · {availability?.busy_drivers ?? 4} Busy
+        <div className="zonal-metric-card">
+          <div className="zonal-metric-card__info">
+            <span className="zonal-metric-card__label">Drivers in Viewport</span>
+            <span className="zonal-metric-card__value">{cityFleetStats.total}</span>
+            <span className="zonal-metric-card__sub">
+              {cityFleetStats.available} Available · {cityFleetStats.busy} On Trip
             </span>
           </div>
-          <div className="zonal-summary-card__icon zonal-summary-card__icon--green">
+          <div className="zonal-metric-card__icon zonal-metric-card__icon--green">
             <Users size={22} />
           </div>
         </div>
 
-        <div className="zonal-summary-card">
-          <div className="zonal-summary-card__info">
-            <span className="zonal-summary-card__label">Overall Availability</span>
-            <span className="zonal-summary-card__value">
-              {Math.round((availability?.overall_availability_ratio ?? 0.53) * 100)}%
-            </span>
-            <span className="zonal-summary-card__sub">
-              Target Quota: {availability?.target_quota ?? 32} Drivers
+        <div className="zonal-metric-card">
+          <div className="zonal-metric-card__info">
+            <span className="zonal-metric-card__label">Fleet Availability Ratio</span>
+            <span className="zonal-metric-card__value">{cityFleetStats.supplyRatio}%</span>
+            <span className="zonal-metric-card__sub">
+              {cityFleetStats.supplyRatio >= 70 ? 'Optimal Supply Health' : 'Moderate Availability'}
             </span>
           </div>
           <div
-            className="zonal-summary-card__icon"
+            className="zonal-metric-card__icon"
             style={{
-              background: `${availability?.overall_gradient_color || '#22c55e'}20`,
-              color: availability?.overall_gradient_color || '#22c55e',
+              background: cityFleetStats.supplyRatio >= 70 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              color: cityFleetStats.supplyRatio >= 70 ? '#10b981' : '#f59e0b',
             }}
           >
-            <TrendingUp size={22} />
+            <Flame size={22} />
           </div>
         </div>
 
-        <div className="zonal-summary-card">
-          <div className="zonal-summary-card__info">
-            <span className="zonal-summary-card__label">Directional Health</span>
-            <span className="zonal-summary-card__value" style={{ textTransform: 'capitalize' }}>
-              {resolvedSectionMetrics?.west.status === 'critical' ? 'West Deficit' : 'Optimal'}
+        <div className="zonal-metric-card">
+          <div className="zonal-metric-card__info">
+            <span className="zonal-metric-card__label">Directional Health</span>
+            <span className="zonal-metric-card__value">
+              {directionalQuadrants?.quadrants.west.status === 'critical' ? 'West Deficit (Red)' : 'Balanced'}
             </span>
-            <span className="zonal-summary-card__sub">4 Directional Quadrants Live</span>
+            <span className="zonal-metric-card__sub">Zoom {currentZoom} · 4 Directional Partitions</span>
           </div>
-          <div className="zonal-summary-card__icon zonal-summary-card__icon--amber">
+          <div className="zonal-metric-card__icon zonal-metric-card__icon--purple">
             <Crosshair size={22} />
           </div>
         </div>
       </div>
 
-      {/* Main Two-Column Layout */}
-      <div className="zonal-maps__layout">
-        {/* Left Column: Interactive Vector Map Canvas */}
-        <Card className="zonal-maps__map-card">
-          <div className="zonal-maps__map-header">
-            <div className="zonal-maps__header-title-group">
-              <select
-                className="cy-select"
-                style={{ fontWeight: 600, minWidth: 200 }}
-                value={selectedZone?.id || ''}
-                onChange={(e) => {
-                  const z = zones.find((item) => item.id === e.target.value)
-                  if (z) setSelectedZone(z)
-                }}
-              >
-                {zones.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {z.zone_name} ({z.city_name})
-                  </option>
-                ))}
-              </select>
-
-              <span className="zonal-maps__zone-badge">
-                <ShieldCheck size={14} />
-                {selectedZone?.dispatch_radius_km || 6} km Dispatch
+      {/* Main Workspace Layout: Interactive GIS Map + Inspector Drawer */}
+      <div className="zonal-workspace">
+        {/* Left / Center: Interactive Real Leaflet Map */}
+        <div className="zonal-map-frame">
+          {/* Map Top Floating HUD: Controls & Layer Toggles */}
+          <div className="zonal-map-hud">
+            <div className="zonal-hud-group">
+              <span className="zonal-hud-label">
+                <Layers size={14} /> Layers:
               </span>
-            </div>
 
-            <div className="zonal-maps__map-actions">
-              <Button
-                variant={simulatorMode ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setSimulatorMode((prev) => !prev)}
+              {/* 4 Directional Quadrants Toggle */}
+              <button
+                className={`zonal-hud-pill ${showQuadrants ? 'zonal-hud-pill--active' : ''}`}
+                onClick={() => setShowQuadrants(!showQuadrants)}
+                title="Toggle 4 Directional Partitions (North, South, East, West) with Red-Green availability gradients"
               >
-                <Sliders size={14} />
-                {simulatorMode ? 'Exit Simulator' : 'Test Availability'}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleAutoDivideQuadrants}
-                title="Automatically partition into 4 equal directional wedges from center"
-              >
-                <Sparkles size={14} />
-                Auto-Partition 4 Directions
-              </Button>
-            </div>
-          </div>
+                <Compass size={14} /> 4 Partitions
+              </button>
 
-          {/* Interactive SVG Canvas */}
-          <div className="zonal-canvas-wrapper">
-            {/* View Mode Layer Controls */}
-            <div className="map-view-controls">
+              {/* Zones Boundary Toggle */}
               <button
-                type="button"
-                className={`map-control-btn ${viewMode === 'gradient' ? 'is-active' : ''}`}
-                onClick={() => setViewMode('gradient')}
+                className={`zonal-hud-pill ${showZones ? 'zonal-hud-pill--active' : ''}`}
+                onClick={() => setShowZones(!showZones)}
+                title="Toggle Outer Service Zone Polygons"
               >
-                <TrendingUp size={12} /> Gradient Heatmap
+                <Navigation size={14} /> Zones ({filteredZones.length})
               </button>
+
+              {/* Driver Pins Toggle */}
               <button
-                type="button"
-                className={`map-control-btn ${viewMode === 'boundary' ? 'is-active' : ''}`}
-                onClick={() => setViewMode('boundary')}
+                className={`zonal-hud-pill ${showDriverPins ? 'zonal-hud-pill--active' : ''}`}
+                onClick={() => setShowDriverPins(!showDriverPins)}
+                title="Toggle Individual Driver Pins"
               >
-                <Layers size={12} /> Quadrant Wireframe
+                <Truck size={14} /> Drivers ({cityFleetStats.total})
               </button>
+
+              {/* Heatmap Toggle */}
               <button
-                type="button"
-                className={`map-control-btn ${showDriverPins ? 'is-active' : ''}`}
-                onClick={() => setShowDriverPins((p) => !p)}
+                className={`zonal-hud-pill ${showHeatmap ? 'zonal-hud-pill--active' : ''}`}
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                title="Toggle Continuous Density Heatmap Overlay"
               >
-                <Users size={12} /> {showDriverPins ? 'Hide Drivers' : 'Show Drivers'}
-              </button>
-              <button
-                type="button"
-                className={`map-control-btn ${showLandmarks ? 'is-active' : ''}`}
-                onClick={() => setShowLandmarks((p) => !p)}
-              >
-                <Layers size={12} /> {showLandmarks ? 'Landmarks: On' : 'Landmarks: Off'}
+                <Flame size={14} /> Heatmap
               </button>
             </div>
 
-            {/* Cardinal Compass HUD */}
-            <div className="compass-hud" aria-hidden>
-              <div className="compass-rose">
-                <span className="compass-point compass-point--n">N</span>
-                <span className="compass-point compass-point--e">E</span>
-                <span className="compass-point compass-point--s">S</span>
-                <span className="compass-point compass-point--w">W</span>
-                <div className="compass-needle" />
-              </div>
-            </div>
-
-            {/* Gradient Legend Overlay */}
-            <div className="gradient-legend-overlay">
-              <div className="gradient-legend-title">
-                <span>Driver Availability Spectrum</span>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>Red $\rightarrow$ Green</span>
-              </div>
-              <div className="gradient-legend-bar" />
-              <div className="gradient-legend-labels">
-                <span>🔴 Critical (&lt;35%)</span>
-                <span>🟡 Moderate (50%)</span>
-                <span>🟢 Optimal (70%+)</span>
-              </div>
-            </div>
-
-            {/* Map Tooltip for hovered driver */}
-            {hoveredDriver && (
-              <div
-                className="map-hover-tooltip"
-                style={{ left: hoveredDriver.x, top: hoveredDriver.y }}
-              >
-                <div className="map-hover-tooltip__title">{hoveredDriver.name}</div>
-                <div className="map-hover-tooltip__row">
-                  <span>Vehicle: {hoveredDriver.vehicle}</span>
-                  <span style={{ color: hoveredDriver.status === 'Online' ? '#4ade80' : '#fbbf24' }}>
-                    {hoveredDriver.status}
-                  </span>
-                </div>
-                <div className="map-hover-tooltip__row">
-                  <span>Phone: {hoveredDriver.phone}</span>
-                </div>
-              </div>
-            )}
-
-            {/* SVG Render */}
-            <svg
-              className="zonal-svg-canvas"
-              viewBox="0 0 1000 680"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <defs>
-                {/* Background Grid Pattern */}
-                <pattern id="zonalGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path
-                    d="M 40 0 L 0 0 0 40"
-                    fill="none"
-                    stroke="rgba(148, 163, 184, 0.12)"
-                    strokeWidth="0.8"
-                  />
-                  <circle cx="0" cy="0" r="1.5" fill="rgba(148, 163, 184, 0.25)" />
-                </pattern>
-
-                {/* Dynamic Section Radial Gradients based on availability color */}
-                {(['north', 'east', 'south', 'west'] as DirectionKey[]).map((key) => {
-                  const metric = resolvedSectionMetrics?.[key]
-                  const baseColor = metric?.color || '#22c55e'
-                  return (
-                    <radialGradient
-                      key={key}
-                      id={`sec-radial-${key}`}
-                      cx="50%"
-                      cy="50%"
-                      r="70%"
-                    >
-                      <stop offset="0%" stopColor={baseColor} stopOpacity={viewMode === 'gradient' ? 0.65 : 0.2} />
-                      <stop offset="60%" stopColor={baseColor} stopOpacity={viewMode === 'gradient' ? 0.45 : 0.12} />
-                      <stop offset="100%" stopColor={baseColor} stopOpacity={0.08} />
-                    </radialGradient>
-                  )
-                })}
-
-                {/* Pulsing Driver Halo Filter */}
-                <filter id="glowGreen" x="-50%" y="-50%" width="200%" height="200%">
-                  <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22c55e" floodOpacity="0.8" />
-                </filter>
-                <filter id="glowAmber" x="-50%" y="-50%" width="200%" height="200%">
-                  <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#f59e0b" floodOpacity="0.8" />
-                </filter>
-              </defs>
-
-              {/* Cartographic Background */}
-              <rect width="1000" height="680" fill="#0b1120" />
-              <rect width="1000" height="680" fill="url(#zonalGrid)" />
-
-              {/* Godavari River Flow Ribbon (Geographic landmark for Nashik) */}
-              {showLandmarks && (
-                <path
-                  d="M 0,260 C 180,240 320,310 500,330 C 680,350 820,290 1000,300"
-                  fill="none"
-                  stroke="rgba(56, 189, 248, 0.22)"
-                  strokeWidth="24"
-                  strokeLinecap="round"
-                />
-              )}
-
-              {/* Landmark Annotations */}
-              {showLandmarks && (
-                <g opacity="0.6">
-                  <text x="500" y="360" fill="#38bdf8" fontSize="11" fontWeight="600" textAnchor="middle">
-                    Godavari River
-                  </text>
-                  <circle cx="500" cy="340" r="3" fill="#ffffff" />
-                  <text x="500" y="330" fill="#94a3b8" fontSize="10" textAnchor="middle">
-                    CBS Ashok Stambh
-                  </text>
-                  <text x="500" y="100" fill="#94a3b8" fontSize="10" textAnchor="middle">
-                    Panchavati (North)
-                  </text>
-                  <text x="820" y="440" fill="#94a3b8" fontSize="10" textAnchor="middle">
-                    Nashik Road Rail (South)
-                  </text>
-                  <text x="180" y="420" fill="#94a3b8" fontSize="10" textAnchor="middle">
-                    Satpur / Ambad MIDC (West)
-                  </text>
-                </g>
-              )}
-
-              {/* Main Zone Outer Boundary (Dashed Polygon) */}
-              {availability?.polygon_coordinates && (
-                <polygon
-                  points={availability.polygon_coordinates
-                    .map((pt) => projection.project(pt[0], pt[1]).join(','))
-                    .join(' ')}
-                  fill="none"
-                  stroke="rgba(148, 163, 184, 0.4)"
-                  strokeWidth="2"
-                  strokeDasharray="6 4"
-                />
-              )}
-
-              {/* 4 Directional Polygon Sections (North, South, East, West) */}
-              {(['north', 'east', 'south', 'west'] as DirectionKey[]).map((key) => {
-                const sec = availability?.sections[key]
-                if (!sec || !sec.polygon_points || sec.polygon_points.length < 3) return null
-
-                const svgPoints = sec.polygon_points
-                  .map((pt) => projection.project(pt[0], pt[1]).join(','))
-                  .join(' ')
-
-                const metric = resolvedSectionMetrics?.[key]
-                const strokeColor = metric?.color || '#22c55e'
-                const isSelected = selectedDirection === key
-
-                // Compute Centroid for Badge
-                const projPts = sec.polygon_points.map((pt) => projection.project(pt[0], pt[1]))
-                const avgX = Math.round(projPts.reduce((acc, p) => acc + p[0], 0) / projPts.length)
-                const avgY = Math.round(projPts.reduce((acc, p) => acc + p[1], 0) / projPts.length)
-
-                return (
-                  <g key={key}>
-                    {/* Directional Polygon Section Path */}
-                    <polygon
-                      points={svgPoints}
-                      fill={`url(#sec-radial-${key})`}
-                      stroke={strokeColor}
-                      strokeWidth={isSelected ? 3.5 : 2}
-                      className={`directional-polygon-path ${isSelected ? 'is-selected' : ''}`}
-                      onClick={() => setSelectedDirection(key)}
-                    />
-
-                    {/* Section Centroid Badge Pill */}
-                    <g
-                      className="section-badge-group"
-                      transform={`translate(${avgX}, ${avgY})`}
-                      onClick={() => setSelectedDirection(key)}
-                    >
-                      <rect
-                        x="-75"
-                        y="-22"
-                        width="150"
-                        height="44"
-                        fill="rgba(15, 23, 42, 0.88)"
-                        className="section-badge-bg"
-                        stroke={strokeColor}
-                      />
-                      <circle cx="-54" cy="0" r="10" fill={strokeColor} />
-                      <text x="-54" y="0" fill="#ffffff" fontSize="10" fontWeight="800" textAnchor="middle" dominantBaseline="central">
-                        {sec.direction}
-                      </text>
-                      <text x="12" y="-5" className="section-badge-title">
-                        {key.toUpperCase()} SECTION
-                      </text>
-                      <text x="12" y="11" className="section-badge-sub">
-                        {metric?.available || 0} / {metric?.target || 8} Drivers ({Math.round((metric?.ratio || 0) * 100)}%)
-                      </text>
-                    </g>
-                  </g>
-                )
-              })}
-
-              {/* Live Driver Markers */}
-              {showDriverPins &&
-                availability &&
-                (['north', 'east', 'south', 'west'] as DirectionKey[]).map((key) => {
-                  const sec = availability.sections[key]
-                  if (!sec || !sec.drivers) return null
-
-                  return sec.drivers.map((drv) => {
-                    const [px, py] = projection.project(drv.lat, drv.lng)
-                    const isAvail = drv.is_available
-                    const pinColor = isAvail ? '#22c55e' : '#f59e0b'
-
-                    return (
-                      <g
-                        key={drv.id}
-                        transform={`translate(${px}, ${py})`}
-                        onMouseEnter={() => {
-                          setHoveredDriver({
-                            name: drv.name,
-                            vehicle: 'Pickup / 3W',
-                            phone: drv.phone || '',
-                            status: drv.status,
-                            x: px,
-                            y: py,
-                          })
-                        }}
-                        onMouseLeave={() => setHoveredDriver(null)}
-                      >
-                        {isAvail && (
-                          <circle cx="0" cy="0" r="8" fill="none" stroke="#22c55e" strokeWidth="1.5" className="driver-pulse" />
-                        )}
-                        <circle
-                          cx="0"
-                          cy="0"
-                          r="6"
-                          fill={pinColor}
-                          stroke="#ffffff"
-                          strokeWidth="1.5"
-                          className="driver-marker-circle"
-                          filter={isAvail ? 'url(#glowGreen)' : 'url(#glowAmber)'}
-                        />
-                      </g>
-                    )
-                  })
-                })}
-            </svg>
-          </div>
-        </Card>
-
-        {/* Right Column: Section Configuration Inspector & Simulator */}
-        <aside className="zonal-inspector">
-          {/* Section Selection Tabs */}
-          <div className="zonal-panel-card">
-            <div className="zonal-panel-card__header">
-              <span className="zonal-panel-card__title">
-                <Compass size={18} />
-                Directional Section Inspector
-              </span>
-              <StatusPill
-                status={currentSection?.active ? 'Active' : 'Disabled'}
-                tone={currentSection?.active ? 'success' : 'neutral'}
-              />
-            </div>
-
-            {/* 4 Direction Tabs (North, East, South, West) */}
-            <div className="directional-tabs">
-              {(['north', 'east', 'south', 'west'] as DirectionKey[]).map((dirKey) => {
-                const metric = resolvedSectionMetrics?.[dirKey]
-                const isActive = selectedDirection === dirKey
-                const color = metric?.color || '#22c55e'
-
-                return (
+            <div className="zonal-hud-group">
+              {/* Heatmap Mode Picker (Supply vs Deficit) */}
+              {showHeatmap && (
+                <div className="zonal-heatmap-mode-select" title="Switch heatmap mode: Supply (Available Drivers) vs Deficit (Driver Shortages)">
+                  <span className="zonal-hud-label">Heatmap Mode:</span>
                   <button
-                    key={dirKey}
-                    type="button"
-                    className={`directional-tab-btn ${isActive ? 'is-active' : ''}`}
-                    onClick={() => {
-                      setSelectedDirection(dirKey)
-                      setIsEditingSection(false)
-                    }}
+                    className={`zonal-hud-btn ${
+                      heatmapMode === 'availability' ? 'zonal-hud-btn--active' : ''
+                    }`}
+                    onClick={() => setHeatmapMode('availability')}
+                    title="Shows where Available Drivers are concentrated (High supply for fast dispatches)"
                   >
-                    <span>{DIRECTION_METAS[dirKey].direction}</span>
-                    <span style={{ fontSize: 10, textTransform: 'capitalize' }}>{dirKey}</span>
-                    <span
-                      className="directional-tab-indicator"
-                      style={{ background: color }}
-                    />
+                    🟢 Supply
                   </button>
-                )
-              })}
-            </div>
-
-            {/* Section Availability Health Gauge */}
-            {currentSection && resolvedSectionMetrics && (
-              <div className="section-gauge">
-                <div className="section-gauge__row">
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>
-                      DRIVER SUPPLY AVAILABILITY
-                    </div>
-                    <div
-                      className="section-gauge__ratio"
-                      style={{ color: resolvedSectionMetrics[selectedDirection].color }}
-                    >
-                      {resolvedSectionMetrics[selectedDirection].available} /{' '}
-                      {resolvedSectionMetrics[selectedDirection].target} Drivers
-                    </div>
-                  </div>
-                  <StatusPill
-                    status={
-                      resolvedSectionMetrics[selectedDirection].status === 'optimal'
-                        ? '🟢 Optimal Supply'
-                        : resolvedSectionMetrics[selectedDirection].status === 'moderate'
-                        ? '🟡 Fair Availability'
-                        : '🔴 Deficit Shortage'
-                    }
-                    tone={
-                      resolvedSectionMetrics[selectedDirection].status === 'optimal'
-                        ? 'success'
-                        : resolvedSectionMetrics[selectedDirection].status === 'moderate'
-                        ? 'warning'
-                        : 'danger'
-                    }
-                  />
+                  <button
+                    className={`zonal-hud-btn ${heatmapMode === 'deficit' ? 'zonal-hud-btn--active' : ''}`}
+                    onClick={() => setHeatmapMode('deficit')}
+                    title="Shows where Drivers are busy or scarce (Deficit alerts where more fleet is needed)"
+                  >
+                    🔴 Deficit
+                  </button>
                 </div>
-
-                <div className="section-gauge__bar-wrap">
-                  <div
-                    className="section-gauge__bar-fill"
-                    style={{
-                      width: `${Math.round(resolvedSectionMetrics[selectedDirection].ratio * 100)}%`,
-                      background: resolvedSectionMetrics[selectedDirection].color,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Section Configuration Fields */}
-            <div style={{ marginTop: 14 }}>
-              <div className="zonal-form-group">
-                <label className="zonal-form-label">
-                  Section Name
-                  <Edit2 size={12} color="#64748b" />
-                </label>
-                <input
-                  type="text"
-                  className="zonal-input"
-                  value={currentSection?.name || ''}
-                  onChange={(e) => {
-                    if (!availability || !currentSection) return
-                    setAvailability({
-                      ...availability,
-                      sections: {
-                        ...availability.sections,
-                        [selectedDirection]: {
-                          ...currentSection,
-                          name: e.target.value,
-                        },
-                      },
-                    })
-                    setIsEditingSection(true)
-                  }}
-                />
-              </div>
-
-              <div className="zonal-form-group">
-                <label className="zonal-form-label">
-                  <span>Target Driver Quota (Calibrates Gradient)</span>
-                  <span style={{ fontWeight: 700 }}>{currentSection?.target_drivers || 8} Drivers</span>
-                </label>
-                <input
-                  type="range"
-                  min="2"
-                  max="25"
-                  step="1"
-                  className="zonal-range-slider"
-                  value={currentSection?.target_drivers || 8}
-                  onChange={(e) => {
-                    if (!availability || !currentSection) return
-                    const val = Number.parseInt(e.target.value, 10)
-                    setAvailability({
-                      ...availability,
-                      sections: {
-                        ...availability.sections,
-                        [selectedDirection]: {
-                          ...currentSection,
-                          target_drivers: val,
-                        },
-                      },
-                    })
-                    setIsEditingSection(true)
-                  }}
-                />
-              </div>
-
-              <div className="zonal-form-group">
-                <label className="zonal-form-label">
-                  <span>Dispatch Radius (km)</span>
-                  <span>{currentSection?.dispatch_radius_km || 6} km</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  className="zonal-input"
-                  value={currentSection?.dispatch_radius_km || 6}
-                  onChange={(e) => {
-                    if (!availability || !currentSection) return
-                    setAvailability({
-                      ...availability,
-                      sections: {
-                        ...availability.sections,
-                        [selectedDirection]: {
-                          ...currentSection,
-                          dispatch_radius_km: Number.parseFloat(e.target.value) || 5,
-                        },
-                      },
-                    })
-                    setIsEditingSection(true)
-                  }}
-                />
-              </div>
-
-              {/* Polygon Vertices Coordinate Viewer */}
-              <div className="zonal-form-group">
-                <label className="zonal-form-label">
-                  <span>Polygon Vertices ({currentSection?.polygon_points?.length || 0} pts)</span>
-                </label>
-                <div className="points-table-container">
-                  <table className="points-table">
-                    <thead>
-                      <tr>
-                        <th>Point</th>
-                        <th>Latitude</th>
-                        <th>Longitude</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentSection?.polygon_points?.map((pt, i) => (
-                        <tr key={i}>
-                          <td>#{i + 1}</td>
-                          <td>{pt[0].toFixed(4)}</td>
-                          <td>{pt[1].toFixed(4)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Save Section Button */}
-              {isEditingSection && (
-                <Button
-                  variant="primary"
-                  style={{ width: '100%', marginTop: 8 }}
-                  onClick={handleSaveSection}
-                >
-                  <Save size={15} />
-                  Save Section Configuration
-                </Button>
               )}
+
+              {/* Viewport Filter Switch */}
+              <button
+                className={`zonal-hud-pill ${filterByViewport ? 'zonal-hud-pill--highlight' : ''}`}
+                onClick={() => setFilterByViewport(!filterByViewport)}
+                title="When ON: counts only drivers and zones currently visible on your screen as you pan/zoom"
+              >
+                <Crosshair size={14} /> Filter to Viewport
+              </button>
             </div>
           </div>
 
-          {/* Availability Simulator Sandbox */}
-          {simulatorMode && (
-            <div className="simulator-widget">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Sliders size={15} /> Live Availability Simulator
+          {/* Drawing Banner Overlay (Active during polygon creation) */}
+          {isDrawing && (
+            <div className="zonal-drawing-hud">
+              <div className="zonal-drawing-hud__indicator">
+                <span className="zonal-drawing-hud__dot" />
+                <span className="zonal-drawing-hud__title">
+                  {drawnPolygonComplete ? 'Polygon Boundary Closed' : 'Polygon Drawing in Progress'}
                 </span>
-                <span style={{ fontSize: 11, background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
-                  Sandbox
-                </span>
+                <span className="zonal-drawing-hud__points">{drawPoints.length} vertices placed</span>
               </div>
-              <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>
-                Slide driver counts to observe real-time red-to-green gradient transitions across the 4 directional polygons.
-              </p>
 
-              {(['north', 'east', 'south', 'west'] as DirectionKey[]).map((key) => {
-                const color = resolvedSectionMetrics?.[key].color || '#22c55e'
-                return (
-                  <div key={key} className="simulator-slider-row">
-                    <label style={{ textTransform: 'capitalize' }}>{key}</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="15"
-                      value={simDrivers[key]}
-                      onChange={(e) =>
-                        setSimDrivers((prev) => ({
-                          ...prev,
-                          [key]: Number.parseInt(e.target.value, 10),
-                        }))
-                      }
-                    />
-                    <span className="slider-val" style={{ color }}>
-                      {simDrivers[key]} drv
-                    </span>
-                  </div>
-                )
-              })}
+              <div className="zonal-drawing-hud__instructions">
+                {drawnPolygonComplete
+                  ? 'Review zone settings on the right panel and save.'
+                  : 'Click on the map to add points. Place 3+ vertices and click the start point or "Complete Polygon" to close.'}
+              </div>
 
-              <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className="preset-chip"
-                  onClick={() => setSimDrivers({ north: 1, east: 2, south: 1, west: 0 })}
+              <div className="zonal-drawing-hud__actions">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleUndoPoint}
+                  disabled={drawPoints.length === 0}
                 >
-                  🔴 High Deficit
-                </button>
-                <button
-                  type="button"
-                  className="preset-chip"
-                  onClick={() => setSimDrivers({ north: 10, east: 8, south: 9, west: 12 })}
-                >
-                  🟢 Surplus Supply
-                </button>
-                <button
-                  type="button"
-                  className="preset-chip"
-                  onClick={() => setSimDrivers({ north: 8, east: 4, south: 6, west: 1 })}
-                >
-                  🟡 West Deficit
-                </button>
+                  <Undo2 size={14} /> Undo Point
+                </Button>
+
+                {!drawnPolygonComplete ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleCompletePolygon}
+                    disabled={drawPoints.length < 3}
+                  >
+                    <CheckCircle2 size={14} /> Complete Polygon
+                  </Button>
+                ) : (
+                  <Button variant="primary" size="sm" onClick={handleSaveDrawnZone} disabled={savingZone}>
+                    <CheckCircle2 size={14} /> {savingZone ? 'Saving…' : 'Save Zone'}
+                  </Button>
+                )}
+
+                <Button variant="secondary" className="cy-btn--danger" size="sm" onClick={handleCancelDrawing}>
+                  <XCircle size={14} /> Cancel
+                </Button>
               </div>
             </div>
           )}
 
-          {/* Quick Zone Operations */}
-          <div className="zonal-panel-card">
-            <span className="zonal-panel-card__title" style={{ fontSize: 13, marginBottom: 10 }}>
-              Zone Actions
-            </span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button
-                variant="secondary"
-                size="sm"
-                style={{ flex: 1 }}
-                onClick={() => {
-                  if (selectedZone) {
-                    setEditingZoneId(selectedZone.id)
-                    setFormName(selectedZone.zone_name)
-                    setFormCity(selectedZone.city_name)
-                    setFormDispatchRadius(String(selectedZone.dispatch_radius_km || 6))
-                    setFormServiceRadius(String(selectedZone.service_radius_km || 50))
-                    setModalOpen(true)
-                  }
-                }}
-              >
-                <Edit2 size={14} /> Edit Zone
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                style={{ color: '#ef4444' }}
-                onClick={() => selectedZone && handleDeleteZone(selectedZone)}
-              >
-                <Trash2 size={14} /> Delete
-              </Button>
+          {/* Leaflet Map DOM Node */}
+          <div ref={mapContainerRef} className="zonal-leaflet-map" id="zonal-leaflet-map" />
+
+          {/* Heatmap Legend in bottom-left corner */}
+          {showHeatmap && (
+            <div className="zonal-heatmap-legend">
+              <div className="zonal-heatmap-legend__title">
+                {heatmapMode === 'availability' ? 'Driver Availability Density' : 'Demand / Supply Deficit'}
+              </div>
+              <div
+                className={`zonal-heatmap-legend__bar ${
+                  heatmapMode === 'availability'
+                    ? 'zonal-heatmap-legend__bar--avail'
+                    : 'zonal-heatmap-legend__bar--deficit'
+                }`}
+              />
+              <div className="zonal-heatmap-legend__labels">
+                <span>Low</span>
+                <span>Moderate</span>
+                <span>High Density</span>
+              </div>
             </div>
-          </div>
-        </aside>
-      </div>
+          )}
+        </div>
 
-      {/* Create / Edit Zonal Map Modal */}
-      {modalOpen && (
-        <div className="zonal-modal-backdrop" onClick={() => setModalOpen(false)}>
-          <div className="zonal-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="zonal-modal-header">
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
-                {editingZoneId ? 'Edit Zonal Map' : 'Create New Zonal Map'}
-              </h3>
-              <button
-                type="button"
-                className="cy-btn cy-btn--ghost cy-btn--sm"
-                onClick={() => setModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateZone}>
-              <div className="zonal-modal-body">
-                {/* Presets Selector */}
-                {!editingZoneId && (
-                  <div>
-                    <label className="zonal-form-label" style={{ marginBottom: 6 }}>
-                      Load from Preset
-                    </label>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {ZONE_PRESETS.map((p) => (
-                        <button
-                          key={p.name}
-                          type="button"
-                          className="preset-chip"
-                          onClick={() => applyPreset(p)}
-                        >
-                          {p.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="zonal-form-group">
-                  <label className="zonal-form-label">Zone Name</label>
+        {/* Right: Operational Inspector Panel */}
+        <div className="zonal-sidebar-panel">
+          {/* Drawing Config Panel (shown when polygon is closed) */}
+          {isDrawing && drawnPolygonComplete ? (
+            <Card className="zonal-create-card">
+              <CardHeader
+                title="Configure New Zone"
+                subtitle={`${selectedCity.name} · ${drawPoints.length} vertices`}
+              />
+              <CardBody className="zonal-create-card__body">
+                <div className="zonal-field">
+                  <label className="zonal-field__label">Zone Name *</label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. Nashik Metropolitan Core"
-                    className="zonal-input"
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
+                    className="cy-input"
+                    placeholder="e.g. Satpur MIDC Industrial Zone"
+                    value={newZoneName}
+                    onChange={(e) => setNewZoneName(e.target.value)}
                   />
                 </div>
 
-                <div className="zonal-form-group">
-                  <label className="zonal-form-label">City</label>
+                <div className="zonal-field">
+                  <label className="zonal-field__label">Operational City</label>
                   <input
                     type="text"
-                    required
-                    className="zonal-input"
-                    value={formCity}
-                    onChange={(e) => setFormCity(e.target.value)}
+                    className="cy-input"
+                    value={selectedCity.name}
+                    disabled
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div className="zonal-form-group">
-                    <label className="zonal-form-label">Dispatch Radius (km)</label>
+                <div className="zonal-form-row">
+                  <div className="zonal-field">
+                    <label className="zonal-field__label">Dispatch Radius (km)</label>
                     <input
                       type="number"
                       step="0.5"
-                      required
-                      className="zonal-input"
-                      value={formDispatchRadius}
-                      onChange={(e) => setFormDispatchRadius(e.target.value)}
+                      min="1"
+                      max="30"
+                      className="cy-input"
+                      value={newZoneDispatchRadius}
+                      onChange={(e) => setNewZoneDispatchRadius(e.target.value)}
                     />
                   </div>
-                  <div className="zonal-form-group">
-                    <label className="zonal-form-label">Max Service Radius (km)</label>
+
+                  <div className="zonal-field">
+                    <label className="zonal-field__label">Service Radius (km)</label>
                     <input
                       type="number"
                       step="1"
-                      required
-                      className="zonal-input"
-                      value={formServiceRadius}
-                      onChange={(e) => setFormServiceRadius(e.target.value)}
+                      min="5"
+                      max="120"
+                      className="cy-input"
+                      value={newZoneServiceRadius}
+                      onChange={(e) => setNewZoneServiceRadius(e.target.value)}
                     />
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    background: '#f8fafc',
-                    padding: 12,
-                    borderRadius: 8,
-                    border: '1px solid #e2e8f0',
-                    fontSize: 12,
-                    color: '#64748b',
-                  }}
-                >
-                  ✨ <strong>Automatic 4-Quadrant Partitioning</strong>: On creation, the zone polygon will automatically partition into 4 contiguous directional sections (North, East, South, West) with active driver availability gradient tracking.
+                <div className="zonal-field">
+                  <label className="zonal-field__label">Zone Theme Color</label>
+                  <div className="zonal-color-picker">
+                    {ZONE_COLORS.map((c) => (
+                      <button
+                        key={c.hex}
+                        type="button"
+                        className={`zonal-color-dot ${newZoneColor === c.hex ? 'zonal-color-dot--active' : ''}`}
+                        style={{ backgroundColor: c.hex }}
+                        onClick={() => setNewZoneColor(c.hex)}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
                 </div>
+
+                <div className="zonal-create-actions">
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveDrawnZone}
+                    disabled={savingZone || !newZoneName.trim()}
+                  >
+                    <CheckCircle2 size={16} />
+                    {savingZone ? 'Saving Zone…' : 'Save & Activate Zone'}
+                  </Button>
+                  <Button variant="secondary" onClick={handleCancelDrawing}>
+                    Discard
+                  </Button>
+                </div>
+              </CardBody>
+            </Card>
+          ) : (
+            <Card className="zonal-inspector-card">
+              {/* Tab Navigation */}
+              <div className="zonal-inspector-tabs">
+                <button
+                  className={`zonal-tab-btn ${activeTab === 'quadrants' ? 'zonal-tab-btn--active' : ''}`}
+                  onClick={() => setActiveTab('quadrants')}
+                  title="4 Directional Partitions (North, South, East, West)"
+                >
+                  <Compass size={15} /> 4 Partitions
+                </button>
+                <button
+                  className={`zonal-tab-btn ${activeTab === 'zones' ? 'zonal-tab-btn--active' : ''}`}
+                  onClick={() => setActiveTab('zones')}
+                  title="All Service Zones"
+                >
+                  <Navigation size={15} /> Zones ({filteredZones.length})
+                </button>
+                <button
+                  className={`zonal-tab-btn ${activeTab === 'drivers' ? 'zonal-tab-btn--active' : ''}`}
+                  onClick={() => setActiveTab('drivers')}
+                  title="All Fleet Drivers"
+                >
+                  <Truck size={15} /> Fleet ({filteredDrivers.length})
+                </button>
+                <button
+                  className={`zonal-tab-btn ${activeTab === 'settings' ? 'zonal-tab-btn--active' : ''}`}
+                  onClick={() => setActiveTab('settings')}
+                  title="GIS Controls"
+                >
+                  <Sliders size={15} /> Tuning
+                </button>
               </div>
 
-              <div className="zonal-modal-footer">
-                <Button variant="ghost" onClick={() => setModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button variant="primary" type="submit">
-                  {editingZoneId ? 'Save Changes' : 'Create Zonal Map'}
-                </Button>
-              </div>
-            </form>
-          </div>
+              {/* TAB 1: 4 DIRECTIONAL QUADRANTS (RED-GREEN AVAILABILITY) */}
+              {activeTab === 'quadrants' && (
+                <div className="zonal-inspector-content">
+                  <div className="zonal-quadrant-banner">
+                    <div className="zonal-quadrant-banner__title">
+                      <Compass size={16} />
+                      <strong>
+                        {directionalQuadrants?.zone.zone_name || `${selectedCity.name} Core`}
+                      </strong>
+                    </div>
+                    <div className="zonal-quadrant-banner__desc">
+                      Divided into 4 cardinal directional sections from center point. Colored dynamically from <strong>Red (0 drivers/critical deficit)</strong> to <strong>Green (target available quota reached)</strong>.
+                    </div>
+                  </div>
+
+                  {directionalQuadrants && (
+                    <div className="zonal-quadrants-grid">
+                      {(['north', 'east', 'south', 'west'] as const).map((key) => {
+                        const q = directionalQuadrants.quadrants[key]
+                        const isSelected = selectedQuadrant === key
+                        const isZero = q.driverCount === 0
+
+                        return (
+                          <div
+                            key={key}
+                            className={`zonal-quadrant-card ${isSelected ? 'zonal-quadrant-card--selected' : ''}`}
+                            style={{ borderLeftColor: q.color }}
+                            onClick={() => setSelectedQuadrant(isSelected ? null : key)}
+                          >
+                            <div className="zonal-quadrant-card__header">
+                              <div>
+                                <span className="zonal-quadrant-card__key" style={{ color: q.color }}>
+                                  {q.label}
+                                </span>
+                                <div className="zonal-quadrant-card__sublabel">{q.sublabel}</div>
+                              </div>
+                              <span
+                                className="zonal-quadrant-card__status"
+                                style={{
+                                  background: `${q.color}20`,
+                                  color: q.color,
+                                  borderColor: `${q.color}40`,
+                                }}
+                              >
+                                {isZero ? '0 DRIVERS (RED)' : `${Math.round(q.availabilityRatio * 100)}% AVAIL`}
+                              </span>
+                            </div>
+
+                            {/* Gradient Availability Meter */}
+                            <div className="zonal-quadrant-meter">
+                              <div
+                                className="zonal-quadrant-meter__fill"
+                                style={{
+                                  width: `${Math.max(8, Math.min(100, Math.round(q.availabilityRatio * 100)))}%`,
+                                  backgroundColor: q.color,
+                                }}
+                              />
+                            </div>
+
+                            <div className="zonal-quadrant-card__stats">
+                              <span>
+                                <strong>{q.availableCount}</strong> Available
+                              </span>
+                              <span>
+                                <strong>{q.busyCount}</strong> Busy
+                              </span>
+                              <span>Target: <strong>{q.targetQuota}</strong></span>
+                            </div>
+
+                            {isZero && (
+                              <div className="zonal-quadrant-card__alert">
+                                <AlertTriangle size={12} /> Critical Supply Deficit: 0 drivers in {q.label}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: ZONES LIST */}
+              {activeTab === 'zones' && (
+                <div className="zonal-inspector-content">
+                  <div className="zonal-search-box">
+                    <Search size={14} />
+                    <input
+                      type="text"
+                      className="zonal-search-input"
+                      placeholder="Search zones…"
+                      value={zoneSearch}
+                      onChange={(e) => setZoneSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="zonal-items-list">
+                    {filteredZones.length === 0 ? (
+                      <div className="zonal-empty">
+                        No service zones found for {selectedCity.name}. Click "Draw Polygon Zone" to create one.
+                      </div>
+                    ) : (
+                      filteredZones.map((zone) => {
+                        const isSelected = selectedZone?.id === zone.id
+                        const driverCount = drivers.filter(
+                          (d) =>
+                            zone.polygon_coordinates &&
+                            isPointInPolygon([d.lat, d.lng], zone.polygon_coordinates),
+                        ).length
+
+                        return (
+                          <div
+                            key={zone.id}
+                            className={`zonal-zone-item ${isSelected ? 'zonal-zone-item--selected' : ''}`}
+                            onClick={() => handleFocusZone(zone)}
+                          >
+                            <div className="zonal-zone-item__head">
+                              <div className="zonal-zone-item__title">
+                                <span
+                                  className="zonal-color-dot"
+                                  style={{
+                                    backgroundColor: zone.color || '#3b82f6',
+                                    width: 10,
+                                    height: 10,
+                                  }}
+                                />
+                                <strong>{zone.zone_name}</strong>
+                              </div>
+                              <span className="zonal-zone-item__count">
+                                {driverCount} drivers
+                              </span>
+                            </div>
+
+                            <div className="zonal-zone-item__meta">
+                              <span>Dispatch: {zone.dispatch_radius_km || 5} km</span>
+                              <span>Service: {zone.service_radius_km || 45} km</span>
+                            </div>
+
+                            <div className="zonal-zone-item__actions">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleFocusZone(zone)
+                                }}
+                              >
+                                <Navigation size={13} /> Focus
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                className="cy-btn--danger"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteZone(zone)
+                                }}
+                                title="Delete zone"
+                              >
+                                <Trash2 size={13} />
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: DRIVERS FLEET LIST */}
+              {activeTab === 'drivers' && (
+                <div className="zonal-inspector-content">
+                  <div className="zonal-search-box">
+                    <Search size={14} />
+                    <input
+                      type="text"
+                      className="zonal-search-input"
+                      placeholder="Search driver, vehicle, phone…"
+                      value={driverSearch}
+                      onChange={(e) => setDriverSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="zonal-items-list">
+                    {filteredDrivers.length === 0 ? (
+                      <div className="zonal-empty">No drivers in this city or viewport.</div>
+                    ) : (
+                      filteredDrivers.map((driver) => {
+                        const isOnline = driver.status === 'Online'
+                        const isBusy = driver.status === 'Busy'
+                        const tone = isOnline ? 'success' : isBusy ? 'warning' : 'neutral'
+
+                        return (
+                          <div
+                            key={driver.id}
+                            className="zonal-driver-item"
+                            onClick={() => handleFocusDriver(driver)}
+                          >
+                            <div className="zonal-driver-item__head">
+                              <div>
+                                <div className="zonal-driver-item__name">{driver.name}</div>
+                                <div className="zonal-driver-item__sub">
+                                  {driver.vehicleNumber} · {driver.vehicleType}
+                                </div>
+                              </div>
+                              <StatusPill status={driver.status} tone={tone} />
+                            </div>
+
+                            <div className="zonal-driver-item__meta">
+                              <span>
+                                <Phone size={12} /> {driver.phone}
+                              </span>
+                              <span>
+                                <Radio size={12} /> {driver.speedKmph} km/h
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: GIS TUNING & HELP */}
+              {activeTab === 'settings' && (
+                <div className="zonal-inspector-content zonal-settings-content">
+                  <div className="zonal-help-card">
+                    <div className="zonal-help-card__title">
+                      <HelpCircle size={15} /> HUD Controls Guide
+                    </div>
+                    <ul className="zonal-help-list">
+                      <li>
+                        <strong>🧭 4 Partitions</strong>: Slices the active zone into North, South, East, and West sections. Each quadrant is colored from <strong>Green (sufficient drivers)</strong> to <strong>Red (0 drivers/deficit)</strong>.
+                      </li>
+                      <li>
+                        <strong>🟢 Supply Mode</strong>: Shows a continuous density heatmap of where available/idle drivers are ready for immediate dispatch.
+                      </li>
+                      <li>
+                        <strong>🔴 Deficit Mode</strong>: Inverts the heatmap to highlight shortage zones where drivers are missing or locked in busy trips.
+                      </li>
+                      <li>
+                        <strong>Crosshair Filter to Viewport</strong>: Binds driver counts and zone lists strictly to what is currently visible within your screen frame as you pan/zoom.
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="zonal-field">
+                    <label className="zonal-field__label">
+                      Heatmap Kernel Radius: <strong>{heatmapRadius}px</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="15"
+                      max="60"
+                      value={heatmapRadius}
+                      onChange={(e) => setHeatmapRadius(Number(e.target.value))}
+                      className="cy-slider"
+                    />
+                  </div>
+
+                  <div className="zonal-field">
+                    <label className="zonal-field__label">
+                      Heatmap Max Opacity: <strong>{Math.round(heatmapOpacity * 100)}%</strong>
+                    </label>
+                    <input
+                      type="range"
+                      min="20"
+                      max="100"
+                      value={Math.round(heatmapOpacity * 100)}
+                      onChange={(e) => setHeatmapOpacity(Number(e.target.value) / 100)}
+                      className="cy-slider"
+                    />
+                  </div>
+
+                  <div className="zonal-field">
+                    <label className="zonal-field__label">City Operations Center</label>
+                    <div className="zonal-city-info">
+                      <strong>{selectedCity.name}</strong>
+                      <p>{selectedCity.description}</p>
+                      <code>
+                        Lat: {selectedCity.center[0]}, Lng: {selectedCity.center[1]}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
