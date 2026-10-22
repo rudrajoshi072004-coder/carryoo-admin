@@ -285,8 +285,8 @@ export default function ZonalMaps() {
       zoomControl: false,
     })
 
-    // Custom top-right zoom control
-    L.control.zoom({ position: 'topright' }).addTo(map)
+    // Custom bottom-right zoom control (avoids overlap with top toolbar and layers HUD)
+    L.control.zoom({ position: 'bottomright' }).addTo(map)
 
     // Base Tile Layer
     const tileConfig = BASEMAP_TILES[basemapKey]
@@ -1083,30 +1083,33 @@ export default function ZonalMaps() {
               </button>
             </div>
 
-            <div className="zonal-hud-group">
-              {/* Heatmap Mode Picker (Supply vs Deficit) */}
-              {showHeatmap && (
-                <div className="zonal-heatmap-mode-select" title="Switch heatmap mode: Supply (Available Drivers) vs Deficit (Driver Shortages)">
-                  <span className="zonal-hud-label">Heatmap Mode:</span>
-                  <button
-                    className={`zonal-hud-btn ${
-                      heatmapMode === 'availability' ? 'zonal-hud-btn--active' : ''
-                    }`}
-                    onClick={() => setHeatmapMode('availability')}
-                    title="Shows where Available Drivers are concentrated (High supply for fast dispatches)"
-                  >
-                    🟢 Supply
-                  </button>
-                  <button
-                    className={`zonal-hud-btn ${heatmapMode === 'deficit' ? 'zonal-hud-btn--active' : ''}`}
-                    onClick={() => setHeatmapMode('deficit')}
-                    title="Shows where Drivers are busy or scarce (Deficit alerts where more fleet is needed)"
-                  >
-                    🔴 Deficit
-                  </button>
-                </div>
-              )}
+            {/* Heatmap Mode Picker (Supply vs Deficit) - Dedicated capsule */}
+            {showHeatmap && (
+              <div
+                className="zonal-hud-group zonal-heatmap-mode-select"
+                title="Switch heatmap mode: Supply (Available Drivers) vs Deficit (Driver Shortages)"
+              >
+                <span className="zonal-hud-label">Heatmap Mode:</span>
+                <button
+                  className={`zonal-hud-btn ${
+                    heatmapMode === 'availability' ? 'zonal-hud-btn--active' : ''
+                  }`}
+                  onClick={() => setHeatmapMode('availability')}
+                  title="Shows where Available Drivers are concentrated (High supply for fast dispatches)"
+                >
+                  🟢 Supply
+                </button>
+                <button
+                  className={`zonal-hud-btn ${heatmapMode === 'deficit' ? 'zonal-hud-btn--active' : ''}`}
+                  onClick={() => setHeatmapMode('deficit')}
+                  title="Shows where Drivers are busy or scarce (Deficit alerts where more fleet is needed)"
+                >
+                  🔴 Deficit
+                </button>
+              </div>
+            )}
 
+            <div className="zonal-hud-group">
               {/* Viewport Filter Switch */}
               <button
                 className={`zonal-hud-pill ${filterByViewport ? 'zonal-hud-pill--highlight' : ''}`}

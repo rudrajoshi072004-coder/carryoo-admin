@@ -204,20 +204,22 @@
   position: absolute;
   top: 14px;
   left: 14px;
-  right: 60px;
+  right: 14px;
   z-index: 500;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
   pointer-events: none;
 }
 
 .zonal-hud-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.82);
+  background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -225,6 +227,7 @@
   padding: 5px 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   pointer-events: auto;
+  max-width: 100%;
 }
 
 .zonal-hud-label {
@@ -433,6 +436,63 @@
   font-size: 9px;
   color: #cbd5e1;
   font-weight: 600;
+}
+
+/* ==========================================================================
+   Leaflet Custom Zoom Control (Bottom-Right Positioning & Dark UI Styling)
+   ========================================================================== */
+
+.zonal-leaflet-map .leaflet-bottom.leaflet-right {
+  margin-bottom: 20px;
+  margin-right: 18px;
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.zonal-leaflet-map .leaflet-control-zoom {
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35) !important;
+  background: rgba(15, 23, 42, 0.88) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  margin: 0 !important;
+}
+
+.zonal-leaflet-map .leaflet-control-zoom a {
+  background: rgba(15, 23, 42, 0.88) !important;
+  color: #f1f5f9 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  font-size: 18px !important;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+
+.zonal-leaflet-map .leaflet-control-zoom a:last-child {
+  border-bottom: none !important;
+}
+
+.zonal-leaflet-map .leaflet-control-zoom a:hover {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.zonal-leaflet-map .leaflet-control-zoom a.leaflet-disabled {
+  background: rgba(15, 23, 42, 0.6) !important;
+  color: #64748b !important;
+  cursor: not-allowed;
 }
 
 /* ==========================================================================
