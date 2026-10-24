@@ -30,3 +30,10 @@ dist-ssr
 *.xlsx
 *.xls
 Work Log*.xlsx
+
+# AI Skills & Scratch Checkouts
+*ponytail*
+scratch_ponytail/
+.agents/
+skills/
+
