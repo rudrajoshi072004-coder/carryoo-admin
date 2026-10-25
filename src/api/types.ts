@@ -48,6 +48,7 @@ export type VehicleCategory = {
   outstation_step_discount_percent?: string | null
   outstation_deadhead_multiplier?: string | null
   outstation_min_per_km_rate?: string | null
+  commission_percent?: string | null
   helper_supported?: boolean
   intra_city_available?: boolean
   active: boolean
@@ -73,6 +74,7 @@ export type VehicleCategoryInput = {
   outstation_step_discount_percent?: string
   outstation_deadhead_multiplier?: string
   outstation_min_per_km_rate?: string
+  commission_percent?: string
   max_weight_kg?: number
   active?: boolean
   helper_supported?: boolean
@@ -80,6 +82,42 @@ export type VehicleCategoryInput = {
   priority_order?: number
   icon?: string
   payload_type?: string
+}
+
+export type DriverOffer = {
+  id: string
+  title: string
+  description?: string
+  rides_count: number
+  commission_rate: string
+  valid_days: number
+  start_date: string
+  end_date: string
+  banner_url: string
+  vehicle_categories?: string[]
+  vehicle_category_names?: string[]
+  active: boolean
+  priority?: number
+  usages_count?: number
+  drivers_benefited_count?: number
+  total_commission_saved?: string
+  is_active_now?: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type DriverOfferInput = {
+  title: string
+  description?: string
+  rides_count: number
+  commission_rate: string
+  valid_days: number
+  start_date: string
+  end_date: string
+  banner_url: string
+  vehicle_categories?: string[]
+  active: boolean
+  priority?: number
 }
 
 export type PricingRule = {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { IndianRupee, Milestone, Pencil, Percent, RotateCcw, Route, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, CheckCircle2, IndianRupee, Milestone, Navigation, Pencil, Percent, RefreshCw, RotateCcw, Route, Save, ShieldCheck, Sparkles } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { Button, Card, CardBody, CardHeader, EmptyState, Skeleton } from '../components/ui'
 import { PermissionBanner } from '../components/PermissionBanner'
@@ -9,6 +10,7 @@ import { useAsyncData } from '../hooks/useAsyncData'
 import { getApiErrorMessage } from '../api/client'
 import { listVehicleCategories, updateVehicleCategory } from '../api/services/vehicleCategories'
 import { createServiceZone, listServiceZones, updateServiceZone } from '../api/services/serviceZones'
+import { estimateRouteToll, flushRouteTollCache, type RouteTollEstimateResult } from '../api/services/routeTolls'
 import type { VehicleCategory, VehicleCategoryInput } from '../api/types'
 import { formatINR } from '../lib/utils'
 import {
@@ -18,7 +20,8 @@ import {
 } from '../lib/customerVehicles'
 import './Pricing.css'
 
-const CITY_FIELDS = ['base_fare', 'base_fare_km', 'per_km_rate', 'minimum_fare', 'waiting_per_min'] as const
+
+const CITY_FIELDS = ['base_fare', 'base_fare_km', 'per_km_rate', 'minimum_fare', 'waiting_per_min', 'commission_percent'] as const
 const OUTSTATION_BASE_FIELDS = [
   'outstation_base_fare',
   'outstation_base_fare_km',
@@ -43,6 +46,7 @@ const RATE_LABELS: Record<RateField, string> = {
   per_km_rate: 'Per km',
   minimum_fare: 'Minimum fare',
   waiting_per_min: 'Waiting / min',
+  commission_percent: 'Platform Commission',
   outstation_base_fare: 'Base fare',
   outstation_base_fare_km: 'Base radius',
   outstation_per_km_rate: 'Per km',
@@ -59,6 +63,7 @@ const RATE_HINTS: Partial<Record<RateField, string>> = {
   per_km_rate: 'Per km after base radius',
   minimum_fare: 'Lowest trip total',
   waiting_per_min: 'Wait time per minute',
+  commission_percent: 'Platform fee % deducted from driver earnings',
   outstation_base_fare: 'Fixed outstation start',
   outstation_base_fare_km: 'Distance covered in outstation base',
   outstation_per_km_rate: 'Base rate per extra km',
@@ -71,7 +76,7 @@ const RATE_HINTS: Partial<Record<RateField, string>> = {
 
 function getFieldUnit(key: RateField): string | null {
   if (key === 'base_fare_km' || key === 'outstation_base_fare_km' || key === 'outstation_step_km') return 'km'
-  if (key === 'outstation_step_discount_percent') return '%'
+  if (key === 'commission_percent' || key === 'outstation_step_discount_percent') return '%'
   if (key === 'outstation_deadhead_multiplier') return 'x'
   if (key === 'outstation_min_per_km_rate') return '₹/km'
   return null
@@ -92,6 +97,7 @@ function categoryDraft(cat: VehicleCategory): Record<RateField, string> {
     per_km_rate: money(cat.per_km_rate),
     minimum_fare: money(cat.minimum_fare, cat.base_fare),
     waiting_per_min: money(cat.waiting_per_min, '2.00'),
+    commission_percent: money(cat.commission_percent, '15.00'),
     outstation_base_fare: money(cat.outstation_base_fare, '0.00'),
     outstation_base_fare_km: money(cat.outstation_base_fare_km, '0.00'),
     outstation_per_km_rate: money(cat.outstation_per_km_rate, cat.per_km_rate),
@@ -218,7 +224,7 @@ function RateInputs({
         const stepVal =
           key === 'outstation_deadhead_multiplier'
             ? '0.05'
-            : key === 'outstation_step_discount_percent'
+            : key === 'outstation_step_discount_percent' || key === 'commission_percent'
             ? '0.5'
             : isRadius
             ? '1'
@@ -237,7 +243,7 @@ function RateInputs({
                 canEdit ? 'is-editable' : 'is-readonly'
               } ${unit ? 'is-radius' : ''}`}
             >
-              {key === 'outstation_step_discount_percent' ? (
+              {key === 'outstation_step_discount_percent' || key === 'commission_percent' ? (
                 <Percent size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
               ) : key === 'outstation_deadhead_multiplier' ? (
                 <RotateCcw size={14} strokeWidth={1.75} className="pricing-field-icon" aria-hidden />
@@ -319,8 +325,71 @@ export default function Pricing() {
     setRadiusDraft(val)
   }, [primaryZone, activeCategory])
 
+  const [tollPreset, setTollPreset] = useState<'pune' | 'mumbai' | 'shirdi'>('pune')
+  const [testingToll, setTestingToll] = useState(false)
+  const [flushingToll, setFlushingToll] = useState(false)
+  const [tollResult, setTollResult] = useState<RouteTollEstimateResult | null>(null)
+
+  const PRESET_COORDS = {
+    pune: { name: 'Nashik ⇄ Pune', pickup: [19.9975, 73.7898], drop: [18.5204, 73.8567] },
+    mumbai: { name: 'Nashik ⇄ Mumbai', pickup: [19.9975, 73.7898], drop: [19.0760, 72.8777] },
+    shirdi: { name: 'Nashik ⇄ Shirdi', pickup: [19.9975, 73.7898], drop: [19.7645, 74.4762] },
+  } as const
+
+  const handleTestToll = async () => {
+    setTestingToll(true)
+    try {
+      const selected = PRESET_COORDS[tollPreset]
+      const res = await estimateRouteToll({
+        pickup_lat: selected.pickup[0],
+        pickup_lng: selected.pickup[1],
+        drop_lat: selected.drop[0],
+        drop_lng: selected.drop[1],
+        vehicle_category_id: activeCategory?.id,
+      })
+      setTollResult(res)
+      toast({
+        title: 'Toll estimated',
+        description: `₹${res.toll_amount} (${res.cached ? 'from 30-day cache' : 'fresh Google Routes query'})`,
+        tone: 'success',
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to estimate toll',
+        description: err instanceof Error ? err.message : getApiErrorMessage(err),
+        tone: 'error',
+      })
+    } finally {
+      setTestingToll(false)
+    }
+  }
+
+  const handleFlushToll = async () => {
+    if (!window.confirm('Flush active toll cache? Next outstation orders will query fresh rates from Google Routes API.')) return
+    setFlushingToll(true)
+    try {
+      const res = await flushRouteTollCache()
+      toast({
+        title: 'Cache flushed',
+        description: res.detail || 'Toll cache flushed successfully',
+        tone: 'success',
+      })
+      setTollResult(null)
+    } catch (err) {
+      toast({
+        title: 'Failed to flush toll cache',
+        description: err instanceof Error ? err.message : getApiErrorMessage(err),
+        tone: 'error',
+      })
+    } finally {
+      setFlushingToll(false)
+    }
+  }
+
+
   const showOutstation = Boolean(activeCategory && usesTripTypePricing(activeCategory.name))
   const ratesDirty = useMemo(() => {
+
     const keys: RateField[] = showOutstation ? [...CITY_FIELDS, ...OUTSTATION_FIELDS] : [...CITY_FIELDS]
     return keys.some((key) => draft[key] !== savedSnapshot[key])
   }, [draft, savedSnapshot, showOutstation])
@@ -345,6 +414,7 @@ export default function Pricing() {
         per_km_rate: normalizeRate(draft.per_km_rate, 'Per km'),
         minimum_fare: normalizeRate(draft.minimum_fare, 'Minimum fare'),
         waiting_per_min: normalizeRate(draft.waiting_per_min, 'Waiting / min'),
+        commission_percent: normalizeRate(draft.commission_percent || '15.00', 'Platform Commission %'),
       }
       if (showOutstation) {
         payload.outstation_base_fare = normalizeRate(draft.outstation_base_fare, 'Outstation base fare')
@@ -555,6 +625,138 @@ export default function Pricing() {
           </CardBody>
         </Card>
       ) : null}
+
+      <Card className="pricing-offers-promo-card">
+        <CardBody>
+          <div className="pricing-offers-promo-row">
+            <div className="pricing-offers-promo-icon-wrap">
+              <Sparkles size={22} className="pricing-offers-promo-icon" />
+            </div>
+            <div className="pricing-offers-promo-text">
+              <div className="pricing-offers-promo-badge">COMMISSION-FREE CAMPAIGNS</div>
+              <h4 className="pricing-offers-promo-title">Driver Onboarding Offers (e.g. 1st 3 Rides 0% Commission)</h4>
+              <p className="pricing-offers-promo-sub">
+                Run special promotions where drivers keep 100% of their earnings for their first rides. Set custom validity dates, number of free rides, and mandatory image banners shown directly in the driver mobile app.
+              </p>
+            </div>
+            <Link to="/driver-offers" className="pricing-offers-promo-btn">
+              <span>Configure Driver Offers</span>
+              <ArrowRight size={15} />
+            </Link>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="pricing-tolls-card">
+        <CardBody>
+          <div className="pricing-tolls-row">
+            <div className="pricing-tolls-header-bar">
+              <div className="pricing-tolls-title-group">
+                <div className="pricing-tolls-icon-box">
+                  <Navigation size={20} />
+                </div>
+                <div>
+                  <h4 className="pricing-tolls-title">Highway Toll Gates &amp; FASTag Auto-Pricing</h4>
+                  <p className="pricing-tolls-subtitle">
+                    Automated toll pricing along outstation highway routes with Google Maps Routes API &amp; 30-day corridor caching.
+                  </p>
+                </div>
+              </div>
+              <div className="pricing-tolls-badges">
+                <span className="pricing-toll-badge pricing-toll-badge--fastag">
+                  <CheckCircle2 size={12} /> IN_FASTAG Enabled
+                </span>
+                <span className="pricing-toll-badge pricing-toll-badge--cache">
+                  <ShieldCheck size={12} /> 30-Day Auto Cache
+                </span>
+                <span className="pricing-toll-badge pricing-toll-badge--nocommission">
+                  0% Commission on Tolls
+                </span>
+              </div>
+            </div>
+
+            <div className="pricing-tolls-content">
+              <div>
+                <p className="pricing-tolls-desc">
+                  Outstation trips automatically bundle expected toll charges into customer quotes. Drivers do not need to front cash or submit paper receipts, and <strong>100% of the toll fee is passed through to the driver with 0% platform commission cut</strong>.
+                </p>
+                <ul className="pricing-tolls-features">
+                  <li>
+                    <CheckCircle2 size={13} />
+                    <span>Clustered by 5-char Geohash (~4.9 km corridor zones) to eliminate redundant Google API costs.</span>
+                  </li>
+                  <li>
+                    <CheckCircle2 size={13} />
+                    <span>Strictly complies with Google Maps Platform 30-day caching policy.</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="pricing-tolls-tester">
+                <div className="pricing-tolls-tester-title">
+                  <span>Corridor Toll Simulator</span>
+                  <button
+                    type="button"
+                    className="pricing-tolls-flush-btn"
+                    onClick={handleFlushToll}
+                    disabled={flushingToll}
+                  >
+                    <RefreshCw size={12} className={flushingToll ? 'animate-spin' : ''} />
+                    <span>Flush Cache</span>
+                  </button>
+                </div>
+
+                <div className="pricing-tolls-preset-btns">
+                  {(['pune', 'mumbai', 'shirdi'] as const).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`pricing-tolls-preset-btn ${tollPreset === key ? 'is-selected' : ''}`}
+                      onClick={() => setTollPreset(key)}
+                    >
+                      {PRESET_COORDS[key].name}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pricing-tolls-action-row">
+                  <button
+                    type="button"
+                    className="pricing-tolls-test-btn"
+                    onClick={handleTestToll}
+                    disabled={testingToll}
+                  >
+                    <Navigation size={14} />
+                    <span>{testingToll ? 'Estimating...' : `Check ${PRESET_COORDS[tollPreset].name} Toll`}</span>
+                  </button>
+                </div>
+
+                {tollResult ? (
+                  <div className="pricing-tolls-result-box">
+                    <div>
+                      <div className="pricing-tolls-result-amount">₹{tollResult.toll_amount}</div>
+                      <div className="pricing-tolls-result-meta">
+                        <span>{tollResult.origin_geohash} &rarr; {tollResult.destination_geohash}</span>
+                        <span>•</span>
+                        <span>{tollResult.source}</span>
+                      </div>
+                    </div>
+                    <span
+                      className={`pricing-tolls-cached-pill ${
+                        tollResult.cached
+                          ? 'pricing-tolls-cached-pill--hit'
+                          : 'pricing-tolls-cached-pill--live'
+                      }`}
+                    >
+                      {tollResult.cached ? '30d Cached (₹0 API)' : 'Fresh Live Query'}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <div className={showOutstation ? 'pricing-rate-panels' : undefined}>
         <Card className="pricing-fare-section">

@@ -36,6 +36,7 @@ const emptyForm: VehicleCategoryInput = {
   per_km_rate: '9.00',
   minimum_fare: '35.00',
   waiting_per_min: '2.00',
+  commission_percent: '15.00',
   max_weight_kg: 20,
   active: true,
   helper_supported: false,
@@ -114,6 +115,7 @@ export default function Vehicles() {
       per_km_rate: item.per_km_rate,
       minimum_fare: item.minimum_fare ?? item.base_fare,
       waiting_per_min: item.waiting_per_min ?? '2.00',
+      commission_percent: item.commission_percent ?? '15.00',
       max_weight_kg: item.max_weight_kg ?? undefined,
       active: item.active,
       helper_supported: item.helper_supported ?? false,
@@ -283,6 +285,7 @@ export default function Vehicles() {
                     <th>Base radius</th>
                     <th>Per km</th>
                     <th>Min fare</th>
+                    <th>Commission</th>
                     <th>Max weight</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -309,6 +312,9 @@ export default function Vehicles() {
                         <td className="cy-table__mono">{formatINR(Number.parseFloat(item.per_km_rate))}</td>
                         <td className="cy-table__mono">
                           {item.minimum_fare ? formatINR(Number.parseFloat(item.minimum_fare)) : '—'}
+                        </td>
+                        <td className="cy-table__mono">
+                          <span className="cy-pill cy-pill--info">{item.commission_percent ?? '15.00'}%</span>
                         </td>
                         <td>{item.max_weight_kg != null ? `${item.max_weight_kg} kg` : '—'}</td>
                         <td>
@@ -368,6 +374,18 @@ export default function Vehicles() {
           <label className="form-field">
             <span>Waiting / min (₹)</span>
             <input value={form.waiting_per_min ?? ''} onChange={(e) => setForm({ ...form, waiting_per_min: e.target.value })} />
+          </label>
+          <label className="form-field">
+            <span>Commission (%)</span>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              max="100"
+              value={form.commission_percent ?? '15.00'}
+              onChange={(e) => setForm({ ...form, commission_percent: e.target.value })}
+              placeholder="15.00"
+            />
           </label>
           <label className="form-field">
             <span>Max weight (kg)</span>

@@ -16,6 +16,7 @@ import Wallet from './pages/Wallet'
 import Documents from './pages/Documents'
 import Vehicles from './pages/Vehicles'
 import Pricing from './pages/Pricing'
+import DriverOffers from './pages/DriverOffers'
 import Incentives from './pages/Incentives'
 import Support from './pages/Support'
 import Analytics from './pages/Analytics'
@@ -46,6 +47,7 @@ export default function App() {
                 <Route path="documents" element={<Documents />} />
                 <Route path="vehicles" element={<Vehicles />} />
                 <Route path="pricing" element={<Pricing />} />
+                <Route path="driver-offers" element={<DriverOffers />} />
                 <Route path="incentives" element={<Incentives />} />
                 <Route path="support" element={<Support />} />
                 <Route path="analytics" element={<Analytics />} />
