@@ -193,7 +193,7 @@ export default function DriverOffers() {
       return
     }
 
-    if (!bannerFile && !form.banner_url.trim()) {
+    if (!bannerFile && !form.banner_url?.trim()) {
       toast({
         title: 'Banner image is mandatory',
         description: 'Upload an image banner or provide an image URL.',
@@ -202,13 +202,30 @@ export default function DriverOffers() {
       return
     }
 
-    if (form.rides_count < 1) {
-      toast({ title: 'Invalid rides count', description: 'Rides count must be at least 1.', tone: 'error' })
+    const ridesNum = Number(form.rides_count)
+    if (!Number.isInteger(ridesNum) || ridesNum < 1) {
+      toast({ title: 'Invalid rides count', description: 'Rides count must be a whole number of at least 1.', tone: 'error' })
       return
     }
 
-    if (form.valid_days < 1) {
+    const commRateNum = parseFloat(String(form.commission_rate))
+    if (isNaN(commRateNum) || commRateNum < 0 || commRateNum > 100) {
+      toast({
+        title: 'Invalid commission rate',
+        description: 'Commission rate must be between 0% and 100%.',
+        tone: 'error',
+      })
+      return
+    }
+
+    const validDaysNum = Number(form.valid_days)
+    if (!Number.isInteger(validDaysNum) || validDaysNum < 1) {
       toast({ title: 'Invalid validity days', description: 'Validity must be at least 1 day.', tone: 'error' })
+      return
+    }
+
+    if (!form.start_date || !form.end_date) {
+      toast({ title: 'Dates required', description: 'Enter both start and end dates.', tone: 'error' })
       return
     }
 
@@ -217,13 +234,35 @@ export default function DriverOffers() {
       return
     }
 
+    // Ensure banner_url is always a non-empty string so serializer validation passes even before banner upload
+    const safeBannerUrl = (form.banner_url || '').trim() || (bannerFile ? BANNER_TEMPLATES[0].url : '')
+
+    const payload: DriverOfferInput = {
+      ...form,
+      title: form.title.trim(),
+      description: (form.description || '').trim(),
+      rides_count: ridesNum,
+      commission_rate: commRateNum.toFixed(2),
+      valid_days: validDaysNum,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      banner_url: safeBannerUrl,
+      vehicle_categories: form.vehicle_categories || [],
+      active: Boolean(form.active),
+      priority: Number(form.priority ?? 10),
+    }
+
     setSaving(true)
     try {
       let savedOffer: DriverOffer
       if (editing) {
-        savedOffer = await updateDriverOffer(editing.id, form)
-        if (bannerFile) {
-          savedOffer = await uploadOfferBanner(editing.id, bannerFile)
+        savedOffer = await updateDriverOffer(editing.id, payload, bannerFile)
+        if (bannerFile && (!savedOffer.banner_url || savedOffer.banner_url === BANNER_TEMPLATES[0].url)) {
+          try {
+            savedOffer = await uploadOfferBanner(editing.id, bannerFile)
+          } catch {
+            // Multipart update already handled it
+          }
         }
         setData((prev) => prev?.map((o) => (o.id === savedOffer.id ? savedOffer : o)) ?? prev)
         toast({
@@ -232,9 +271,13 @@ export default function DriverOffers() {
           tone: 'success',
         })
       } else {
-        savedOffer = await createDriverOffer(form)
-        if (bannerFile) {
-          savedOffer = await uploadOfferBanner(savedOffer.id, bannerFile)
+        savedOffer = await createDriverOffer(payload, bannerFile)
+        if (bannerFile && (!savedOffer.banner_url || savedOffer.banner_url === BANNER_TEMPLATES[0].url)) {
+          try {
+            savedOffer = await uploadOfferBanner(savedOffer.id, bannerFile)
+          } catch {
+            // Multipart create already handled it
+          }
         }
         setData((prev) => [savedOffer, ...(prev ?? [])])
         toast({
@@ -588,7 +631,10 @@ export default function DriverOffers() {
                   max="100"
                   step="1"
                   value={form.rides_count}
-                  onChange={(e) => setForm({ ...form, rides_count: Math.max(1, parseInt(e.target.value) || 1) })}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setForm({ ...form, rides_count: v === '' ? ('' as unknown as number) : parseInt(v, 10) })
+                  }}
                   className="driver-offer-input"
                 />
                 <span className="driver-offer-unit">rides</span>
@@ -629,7 +675,10 @@ export default function DriverOffers() {
                   max="365"
                   step="1"
                   value={form.valid_days}
-                  onChange={(e) => setForm({ ...form, valid_days: Math.max(1, parseInt(e.target.value) || 1) })}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setForm({ ...form, valid_days: v === '' ? ('' as unknown as number) : parseInt(v, 10) })
+                  }}
                   className="driver-offer-input"
                 />
                 <span className="driver-offer-unit">days</span>

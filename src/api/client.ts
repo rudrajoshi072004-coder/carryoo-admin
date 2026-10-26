@@ -135,6 +135,22 @@ export function getApiErrorMessage(error: unknown): string {
     if (errors?.detail) return String(errors.detail)
     if (typeof data.detail === 'string') return data.detail
     if (typeof data.message === 'string') return data.message
+
+    // Extract DRF field validation errors e.g. { title: ["..."], banner_url: ["..."] }
+    const fieldErrors: string[] = []
+    for (const [key, val] of Object.entries(data)) {
+      if (['success', 'status_code', 'code'].includes(key)) continue
+      if (Array.isArray(val)) {
+        fieldErrors.push(`${key}: ${val.join(' ')}`)
+      } else if (typeof val === 'string') {
+        fieldErrors.push(`${key}: ${val}`)
+      } else if (val && typeof val === 'object') {
+        fieldErrors.push(`${key}: ${JSON.stringify(val)}`)
+      }
+    }
+    if (fieldErrors.length > 0) {
+      return fieldErrors.join(' | ')
+    }
   }
   return error.message || 'Request failed'
 }

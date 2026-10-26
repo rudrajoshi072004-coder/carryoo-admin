@@ -11,7 +11,28 @@ export async function getDriverOffer(id: string): Promise<DriverOffer> {
   return data
 }
 
-export async function createDriverOffer(input: DriverOfferInput): Promise<DriverOffer> {
+export async function createDriverOffer(
+  input: DriverOfferInput,
+  file?: File | null,
+): Promise<DriverOffer> {
+  if (file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    for (const [key, val] of Object.entries(input)) {
+      if (val === undefined || val === null) continue
+      if (key === 'vehicle_categories' && Array.isArray(val)) {
+        val.forEach((id) => formData.append('vehicle_categories', id))
+      } else {
+        formData.append(key, String(val))
+      }
+    }
+    const { data } = await api.post<DriverOffer>('/driver-offers/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+    return data
+  }
   const { data } = await api.post<DriverOffer>('/driver-offers/', input)
   return data
 }
@@ -19,7 +40,26 @@ export async function createDriverOffer(input: DriverOfferInput): Promise<Driver
 export async function updateDriverOffer(
   id: string,
   input: Partial<DriverOfferInput>,
+  file?: File | null,
 ): Promise<DriverOffer> {
+  if (file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    for (const [key, val] of Object.entries(input)) {
+      if (val === undefined || val === null) continue
+      if (key === 'vehicle_categories' && Array.isArray(val)) {
+        val.forEach((catId) => formData.append('vehicle_categories', catId))
+      } else {
+        formData.append(key, String(val))
+      }
+    }
+    const { data } = await api.patch<DriverOffer>(`/driver-offers/${id}/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+    return data
+  }
   const { data } = await api.patch<DriverOffer>(`/driver-offers/${id}/`, input)
   return data
 }

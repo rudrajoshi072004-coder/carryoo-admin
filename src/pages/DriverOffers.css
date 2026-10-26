@@ -1,4 +1,4 @@
-/* DriverOffers.css - Modern Operations Console Styles */
+/* DriverOffers.css - Carryoo Operations Admin System */
 
 .driver-offers-page {
   display: flex;
@@ -16,14 +16,17 @@
 .driver-offers-stat-card {
   position: relative;
   overflow: hidden;
-  border-radius: var(--cy-radius-lg, 12px);
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: var(--cy-radius-card, 16px);
+  border: 1px solid var(--cy-border, #e2e8f0);
+  background: var(--cy-surface, #ffffff);
+  box-shadow: var(--cy-shadow-xs, 0 1px 2px rgba(15, 23, 42, 0.04));
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .driver-offers-stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-color: var(--cy-border-strong, #cbd5e1);
+  box-shadow: var(--cy-shadow-md, 0 4px 16px rgba(15, 23, 42, 0.08));
 }
 
 .driver-offers-stat-header {
@@ -36,7 +39,7 @@
 .driver-offers-stat-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #64748b);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -51,37 +54,37 @@
 }
 
 .driver-offers-stat-icon.is-emerald {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  background: #ecfdf5;
+  color: #059669;
 }
 
 .driver-offers-stat-icon.is-blue {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .driver-offers-stat-icon.is-purple {
-  background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
+  background: #faf5ff;
+  color: #9333ea;
 }
 
 .driver-offers-stat-icon.is-amber {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: #fffbeb;
+  color: #d97706;
 }
 
 .driver-offers-stat-value {
   display: block;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
-  color: var(--cy-text, #f1f5f9);
+  color: var(--cy-text, #0f172a);
   line-height: 1.2;
   margin-bottom: 4px;
 }
 
 .driver-offers-stat-sub {
   font-size: 12px;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-muted, #94a3b8);
 }
 
 /* Toolbar & Filters */
@@ -93,24 +96,24 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
-  border-radius: 20px;
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.1));
-  background: var(--cy-surface, #1e293b);
-  color: var(--cy-text-secondary, #94a3b8);
+  border-radius: var(--cy-radius-full, 999px);
+  border: 1px solid var(--cy-border, #e2e8f0);
+  background: var(--cy-surface, #ffffff);
+  color: var(--cy-text-secondary, #64748b);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .driver-offers-filter-tab:hover {
-  background: var(--cy-surface-hover, #334155);
-  color: var(--cy-text, #f1f5f9);
+  background: var(--cy-slate-100, #f1f5f9);
+  color: var(--cy-text, #0f172a);
 }
 
 .driver-offers-filter-tab.is-active {
-  background: var(--cy-primary, #6366f1);
-  color: #fff;
-  border-color: var(--cy-primary, #6366f1);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  background: var(--cy-primary, #2563eb);
+  color: #ffffff;
+  border-color: var(--cy-primary, #2563eb);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
 }
 
 /* Grid of Offer Cards */
@@ -123,16 +126,17 @@
 .driver-offer-card {
   display: flex;
   flex-direction: column;
-  border-radius: var(--cy-radius-lg, 14px);
+  border-radius: var(--cy-radius-card, 16px);
   overflow: hidden;
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
-  background: var(--cy-surface, #1e293b);
+  border: 1px solid var(--cy-border, #e2e8f0);
+  background: var(--cy-surface, #ffffff);
+  box-shadow: var(--cy-shadow-sm, 0 1px 3px rgba(15, 23, 42, 0.05));
   transition: all 0.2s ease;
 }
 
 .driver-offer-card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  border-color: var(--cy-primary-ring, #93c5fd);
+  box-shadow: var(--cy-shadow-md, 0 4px 16px rgba(15, 23, 42, 0.08));
 }
 
 /* Card Banner */
@@ -142,7 +146,7 @@
   width: 100%;
   overflow: hidden;
   cursor: pointer;
-  background: #0f172a;
+  background: #f1f5f9;
 }
 
 .driver-offer-card__banner img {
@@ -159,7 +163,7 @@
 .driver-offer-card__banner-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -175,7 +179,7 @@
   padding: 6px 12px;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(8px);
-  color: #fff;
+  color: #ffffff;
   border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
@@ -200,18 +204,25 @@
   flex: 1;
 }
 
+.driver-offer-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .driver-offer-card__title {
   margin: 0 0 6px;
   font-size: 16px;
   font-weight: 700;
-  color: var(--cy-text, #f1f5f9);
+  color: var(--cy-text, #0f172a);
   line-height: 1.35;
 }
 
 .driver-offer-card__desc {
   margin: 0 0 12px;
   font-size: 13px;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #64748b);
   line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -232,17 +243,18 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--cy-radius-sm, 8px);
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--cy-text-secondary, #94a3b8);
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
+  background: var(--cy-slate-100, #f1f5f9);
+  color: var(--cy-slate-700, #334155);
+  border: 1px solid var(--cy-border, #e2e8f0);
 }
 
 .driver-offer-pill--accent {
-  background: rgba(99, 102, 241, 0.12);
-  color: #818cf8;
-  border-color: rgba(99, 102, 241, 0.3);
+  background: var(--cy-blue-50, #eff6ff);
+  color: var(--cy-primary, #2563eb);
+  border-color: var(--cy-blue-200, #bfdbfe);
+  font-weight: 600;
 }
 
 /* Meta List */
@@ -252,7 +264,7 @@
   gap: 6px;
   margin-top: auto;
   padding-top: 10px;
-  border-top: 1px solid var(--cy-border, rgba(255, 255, 255, 0.06));
+  border-top: 1px solid var(--cy-border, #e2e8f0);
 }
 
 .driver-offer-meta-item {
@@ -260,16 +272,16 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #64748b);
 }
 
 .driver-offer-meta-icon {
   flex-shrink: 0;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-muted, #94a3b8);
 }
 
 .driver-offer-meta-icon.is-success {
-  color: #10b981;
+  color: var(--cy-success, #22c55e);
 }
 
 /* Card Footer */
@@ -279,7 +291,7 @@
   justify-content: space-between;
   margin-top: 14px;
   padding-top: 10px;
-  border-top: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
+  border-top: 1px solid var(--cy-border, #e2e8f0);
 }
 
 .driver-offer-toggle-label {
@@ -288,7 +300,7 @@
   gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #64748b);
   cursor: pointer;
   user-select: none;
 }
@@ -296,7 +308,7 @@
 .driver-offer-toggle-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: #6366f1;
+  accent-color: var(--cy-primary, #2563eb);
   cursor: pointer;
 }
 
@@ -317,31 +329,46 @@
 .driver-offer-field__label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--cy-text, #f1f5f9);
+  color: var(--cy-text, #0f172a);
 }
 
 .driver-offer-field__hint {
   font-size: 12px;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-secondary, #64748b);
 }
 
+/* Form Inputs & Textarea */
 .driver-offer-input,
 .driver-offer-textarea {
   width: 100%;
   padding: 9px 12px;
   border-radius: var(--cy-radius-md, 8px);
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.12));
-  background: var(--cy-input-bg, #0f172a);
-  color: var(--cy-text, #f1f5f9);
+  border: 1px solid var(--cy-border, #cbd5e1);
+  background: #ffffff;
+  color: #0f172a;
   font-size: 13px;
+  font-family: inherit;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--cy-shadow-xs, 0 1px 2px rgba(15, 23, 42, 0.04));
+}
+
+.driver-offer-input::placeholder,
+.driver-offer-textarea::placeholder {
+  color: var(--cy-text-muted, #94a3b8);
 }
 
 .driver-offer-input:focus,
 .driver-offer-textarea:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  border-color: var(--cy-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.driver-offer-input:disabled,
+.driver-offer-textarea:disabled {
+  background: var(--cy-slate-100, #f1f5f9);
+  color: var(--cy-text-muted, #94a3b8);
+  cursor: not-allowed;
 }
 
 .driver-offer-form__grid-2 {
@@ -371,7 +398,7 @@
   right: 12px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-secondary, #64748b);
   pointer-events: none;
 }
 
@@ -379,14 +406,15 @@
 .driver-offer-banner-section {
   padding: 16px;
   border-radius: var(--cy-radius-md, 10px);
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
+  background: #ffffff;
+  border: 1px solid var(--cy-border, #e2e8f0);
+  box-shadow: var(--cy-shadow-xs, 0 1px 2px rgba(15, 23, 42, 0.04));
 }
 
 .driver-offer-banner-sub {
   margin: 0 0 12px;
   font-size: 12px;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #64748b);
 }
 
 .driver-offer-banner-preview-box {
@@ -394,8 +422,8 @@
   height: 140px;
   border-radius: 8px;
   overflow: hidden;
-  background: #0f172a;
-  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: var(--cy-slate-100, #f1f5f9);
+  border: 1px dashed var(--cy-border-strong, #cbd5e1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -413,7 +441,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-muted, #94a3b8);
   font-size: 12px;
 }
 
@@ -429,41 +457,42 @@
   gap: 6px;
   padding: 8px 14px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--cy-text, #f1f5f9);
+  background: var(--cy-slate-100, #f1f5f9);
+  color: var(--cy-text, #0f172a);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--cy-border, #cbd5e1);
   transition: all 0.2s ease;
 }
 
 .driver-offer-file-button:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--cy-slate-200, #e2e8f0);
+  border-color: var(--cy-slate-400, #94a3b8);
 }
 
 .driver-offer-filename {
   font-size: 12px;
-  color: #10b981;
+  color: #059669;
   font-weight: 600;
 }
 
 .driver-offer-filename-sub {
   font-size: 11px;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-muted, #94a3b8);
 }
 
 .driver-offer-templates {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid var(--cy-border, rgba(255, 255, 255, 0.06));
+  border-top: 1px solid var(--cy-border, #e2e8f0);
 }
 
 .driver-offer-templates-title {
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #64748b);
   margin-bottom: 8px;
 }
 
@@ -478,12 +507,21 @@
   flex-direction: column;
   border-radius: 6px;
   overflow: hidden;
-  border: 2px solid transparent;
-  background: #0f172a;
+  border: 1px solid var(--cy-border, #e2e8f0);
+  background: var(--cy-surface, #ffffff);
   cursor: pointer;
   padding: 0;
   text-align: left;
   transition: all 0.2s ease;
+}
+
+.driver-offer-template-btn:hover {
+  border-color: var(--cy-primary, #2563eb);
+}
+
+.driver-offer-template-btn.is-selected {
+  border-color: var(--cy-primary, #2563eb);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 }
 
 .driver-offer-template-btn img {
@@ -496,24 +534,15 @@
   padding: 4px 6px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--cy-text-secondary, #94a3b8);
+  color: var(--cy-text-secondary, #475569);
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.driver-offer-template-btn:hover {
-  border-color: rgba(99, 102, 241, 0.5);
-}
-
-.driver-offer-template-btn.is-selected {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
-}
-
 .driver-offer-template-btn.is-selected span {
-  color: #818cf8;
+  color: var(--cy-primary, #2563eb);
   font-weight: 700;
 }
 
@@ -533,21 +562,27 @@
   border-radius: 20px;
   font-size: 12px;
   font-weight: 500;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--cy-text-secondary, #94a3b8);
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.1));
+  background: var(--cy-surface, #ffffff);
+  color: var(--cy-text-secondary, #64748b);
+  border: 1px solid var(--cy-border, #cbd5e1);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
+.driver-offer-vehicle-chip:hover {
+  border-color: var(--cy-slate-400, #94a3b8);
+  color: var(--cy-text, #0f172a);
+}
+
 .driver-offer-vehicle-chip input {
-  accent-color: #6366f1;
+  accent-color: var(--cy-primary, #2563eb);
 }
 
 .driver-offer-vehicle-chip.is-checked {
-  background: rgba(99, 102, 241, 0.15);
-  color: #fff;
-  border-color: #6366f1;
+  background: var(--cy-blue-50, #eff6ff);
+  color: var(--cy-primary, #2563eb);
+  border-color: var(--cy-primary, #2563eb);
+  font-weight: 600;
 }
 
 /* Checkbox Row */
@@ -557,28 +592,28 @@
   gap: 10px;
   padding: 12px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
+  background: var(--cy-surface, #ffffff);
+  border: 1px solid var(--cy-border, #e2e8f0);
   cursor: pointer;
 }
 
 .driver-offer-checkbox-row input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #6366f1;
+  accent-color: var(--cy-primary, #2563eb);
   margin-top: 2px;
 }
 
 .driver-offer-checkbox-row strong {
   display: block;
   font-size: 13px;
-  color: var(--cy-text, #f1f5f9);
+  color: var(--cy-text, #0f172a);
 }
 
 .driver-offer-checkbox-row p {
   margin: 2px 0 0;
   font-size: 12px;
-  color: var(--cy-text-muted, #64748b);
+  color: var(--cy-text-secondary, #64748b);
 }
 
 /* SidePanel Actions */
@@ -587,7 +622,7 @@
   justify-content: flex-end;
   gap: 10px;
   padding-top: 16px;
-  border-top: 1px solid var(--cy-border, rgba(255, 255, 255, 0.08));
+  border-top: 1px solid var(--cy-border, #e2e8f0);
   margin-top: 10px;
 }
 
@@ -597,7 +632,7 @@
   border-radius: 10px;
   overflow: hidden;
   max-height: 480px;
-  background: #0f172a;
+  background: var(--cy-slate-100, #f1f5f9);
 }
 
 .driver-offer-inspect-wrap img {
