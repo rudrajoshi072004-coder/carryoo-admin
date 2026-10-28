@@ -171,6 +171,8 @@ export type Booking = {
   has_drop_parcel_photo?: boolean
   pickup_photo_url?: string
   drop_photo_url?: string
+  has_toll_receipt_photo?: boolean
+  toll_receipt_url?: string
 }
 
 export type DirectionKey = 'north' | 'south' | 'east' | 'west'

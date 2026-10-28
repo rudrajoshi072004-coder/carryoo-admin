@@ -29,6 +29,9 @@ export interface Trip {
   notes?: string
   pickupPhotoUrl?: string
   dropPhotoUrl?: string
+  tollPhotoUrl?: string
+  tollCharges?: number
+  fareWithoutToll?: number
 }
 
 export const tripStatuses = ['All Status', 'Scheduled', 'Running', 'Completed', 'Cancelled'] as const

@@ -420,6 +420,11 @@ function bookingToTrip(b: Booking): Trip {
     dropPhotoUrl:
       b.drop_photo_url ||
       (b.has_drop_parcel_photo ? `/api/v1/bookings/${b.id}/parcel-photo/?kind=drop` : undefined),
+    tollPhotoUrl:
+      b.toll_receipt_url ||
+      (b.has_toll_receipt_photo ? `/api/v1/bookings/${b.id}/parcel-photo/?kind=toll_receipt` : undefined),
+    tollCharges: Number.parseFloat(String(b.pricing_breakdown?.actual_toll_amount || b.pricing_breakdown?.toll_charges || '0')) || 0,
+    fareWithoutToll: Number.parseFloat(String(b.pricing_breakdown?.fare_without_toll || '0')) || undefined,
   }
 }
 

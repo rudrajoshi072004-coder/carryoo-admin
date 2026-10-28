@@ -11,6 +11,7 @@ import {
   UserRound,
   Camera,
   Image as ImageIcon,
+  Receipt,
 } from 'lucide-react'
 import DocumentPreviewModal from '../components/DocumentPreviewModal'
 import { SidePanel } from '../components/ConfirmDialog'
@@ -121,9 +122,17 @@ function TripPanel({
                 <span className="trip-detail-field__value">{trip.distance}</span>
               </div>
               <div className="trip-detail-field">
-                <span className="trip-detail-field__label">Fare</span>
+                <span className="trip-detail-field__label">Total Fare</span>
                 <span className="trip-detail-field__value">{formatINR(trip.fare)}</span>
               </div>
+              {trip.tollCharges && trip.tollCharges > 0 ? (
+                <div className="trip-detail-field">
+                  <span className="trip-detail-field__label">Toll (0% comm.)</span>
+                  <span className="trip-detail-field__value" style={{ color: 'var(--cy-primary, #0284c7)' }}>
+                    {formatINR(trip.tollCharges)}
+                  </span>
+                </div>
+              ) : null}
               <div className="trip-detail-field">
                 <span className="trip-detail-field__label">Duration</span>
                 <span className="trip-detail-field__value">
@@ -281,6 +290,51 @@ function TripPanel({
                     <div className="trip-proof-none">
                       <ImageIcon size={20} strokeWidth={1.5} />
                       <span>No drop photo</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`trip-proof-card ${trip.tollPhotoUrl ? 'is-available' : 'is-empty'}`}
+                onClick={() =>
+                  trip.tollPhotoUrl &&
+                  onInspectPhoto?.({
+                    title: `Toll Receipt · ${trip.id}`,
+                    subtitle: `Order: ${trip.orderId} · Toll: ${formatINR(trip.tollCharges || 0)}`,
+                    url: trip.tollPhotoUrl,
+                    metadata: [
+                      { label: 'Trip ID', value: trip.id },
+                      { label: 'Order ID', value: trip.orderId },
+                      { label: 'Proof Kind', value: 'Driver Toll Receipt' },
+                      { label: 'Driver', value: trip.driver },
+                      { label: 'Toll Amount', value: formatINR(trip.tollCharges || 0) },
+                      { label: 'Route', value: trip.route },
+                    ],
+                  })
+                }
+                role={trip.tollPhotoUrl ? 'button' : undefined}
+                tabIndex={trip.tollPhotoUrl ? 0 : undefined}
+              >
+                <div className="trip-proof-head">
+                  <span className="trip-proof-label">Toll Receipt</span>
+                  <span className={`trip-proof-tag ${trip.tollPhotoUrl ? 'is-uploaded' : 'is-pending'}`}>
+                    {trip.tollPhotoUrl ? 'Uploaded' : 'No Receipt'}
+                  </span>
+                </div>
+                <div className="trip-proof-media">
+                  {trip.tollPhotoUrl ? (
+                    <>
+                      <img src={trip.tollPhotoUrl} alt="Toll receipt proof" className="trip-proof-thumbnail" />
+                      <div className="trip-proof-inspect-overlay">
+                        <Eye size={14} />
+                        <span>Inspect Receipt</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="trip-proof-none">
+                      <Receipt size={20} strokeWidth={1.5} />
+                      <span>{trip.tollCharges ? 'No receipt attached' : 'No tolls charged'}</span>
                     </div>
                   )}
                 </div>
