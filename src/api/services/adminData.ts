@@ -473,12 +473,25 @@ function mergeSettings(apiRaw: Record<string, unknown> | null): PlatformSettings
   return base
 }
 
-async function loadBookings() {
-  return listBookings({ page_size: 500 })
+let bookingsCache: { data: Booking[]; time: number } | null = null
+
+async function loadBookings(pageSize = 150): Promise<Booking[]> {
+  const now = Date.now()
+  if (bookingsCache && now - bookingsCache.time < 15000) {
+    return bookingsCache.data
+  }
+  try {
+    const data = await listBookings({ page_size: pageSize })
+    bookingsCache = { data, time: now }
+    return data
+  } catch (err) {
+    if (bookingsCache) return bookingsCache.data
+    throw err
+  }
 }
 
 export async function fetchDriversAdmin(): Promise<Driver[]> {
-  const [portalResult, bookings] = await Promise.all([fetchPortalDrivers(), loadBookings()])
+  const portalResult = await fetchPortalDrivers()
 
   if (portalResult.denied) {
     throw new Error(
@@ -487,19 +500,15 @@ export async function fetchDriversAdmin(): Promise<Driver[]> {
   }
 
   if (!portalResult.unavailable) {
-    const tripCounts = new Map<string, number>()
-    for (const b of bookings) {
-      const phone = b.driver_summary?.phone
-      if (phone) tripCounts.set(String(phone), (tripCounts.get(String(phone)) ?? 0) + 1)
-    }
-    return portalResult.rows.map((row) => portalRowToDriver(row, tripCounts.get(row.phone) ?? 0))
+    return portalResult.rows.map((row) => portalRowToDriver(row, row.total_trips ?? 0))
   }
 
+  const bookings = await loadBookings()
   return deriveDriversFromBookings(bookings)
 }
 
 export async function fetchCustomersAdmin(): Promise<Customer[]> {
-  const [portalRows, bookings] = await Promise.all([fetchPortalCustomers(), loadBookings()])
+  const portalRows = await fetchPortalCustomers()
   if (portalRows.length > 0) {
     return portalRows.map((row) =>
       defaultCustomer({
@@ -512,6 +521,7 @@ export async function fetchCustomersAdmin(): Promise<Customer[]> {
       }),
     )
   }
+  const bookings = await loadBookings()
   return deriveCustomersFromBookings(bookings)
 }
 

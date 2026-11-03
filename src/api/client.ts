@@ -11,7 +11,7 @@ const USER_KEY = 'carryoo_admin_user'
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 25000,
+  timeout: 45000,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
