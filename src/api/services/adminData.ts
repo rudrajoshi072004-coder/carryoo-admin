@@ -1,7 +1,7 @@
 import { listBookings } from './bookings'
 import { listPayouts, listSupportTickets } from './ops'
 import { listPricingRules } from './pricingRules'
-import { API_BASE_URL } from '../client'
+import { API_BASE_URL, getStoredAccessToken } from '../client'
 import type { Booking } from '../types'
 import type { Driver, DriverStatus, DocStatus } from '../../data/driversData'
 import type { Customer } from '../../data/customersData'
@@ -254,6 +254,11 @@ function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
           const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
           resolvedUrl = `${apiOrigin}${rawUrl}`
         }
+      }
+      const adminToken = getStoredAccessToken() || localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+      if (resolvedUrl && resolvedUrl.includes('/api/') && adminToken && !resolvedUrl.includes('token=')) {
+        const sep = resolvedUrl.includes('?') ? '&' : '?'
+        resolvedUrl = `${resolvedUrl}${sep}token=${encodeURIComponent(adminToken)}`
       }
       const rawNum = String(doc.number ?? '').trim()
       const isFileUri = rawNum.startsWith('file://') || String(doc.file_key ?? '').startsWith('file://')

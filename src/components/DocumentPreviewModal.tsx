@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { Button, StatusPill } from './ui'
+import { api } from '../api/client'
 import './DocumentPreviewModal.css'
 
 export interface DocumentPreviewModalProps {
@@ -48,8 +49,40 @@ export default function DocumentPreviewModal({
   const [hasError, setHasError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const isLocalFileUri = Boolean(fileUrl && fileUrl.startsWith('file://'))
   const validWebUrl = Boolean(fileUrl && !isLocalFileUri)
+
+  useEffect(() => {
+    let active = true
+    let createdUrl: string | null = null
+
+    if (open && validWebUrl && fileUrl && (fileUrl.includes('/api/') || fileUrl.includes('/documents/'))) {
+      setIsLoading(true)
+      setHasError(false)
+      api
+        .get(fileUrl, { responseType: 'blob' })
+        .then((res: { data: Blob }) => {
+          if (!active) return
+          createdUrl = URL.createObjectURL(res.data)
+          setBlobUrl(createdUrl)
+          setIsLoading(false)
+        })
+        .catch(() => {
+          if (!active) return
+          // Direct fileUrl fallback
+          setBlobUrl(null)
+          setIsLoading(false)
+        })
+    } else {
+      setBlobUrl(null)
+    }
+
+    return () => {
+      active = false
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  }, [open, fileUrl, validWebUrl])
 
   // Reset viewport state when modal opens or URL changes
   useEffect(() => {
@@ -195,7 +228,7 @@ export default function DocumentPreviewModal({
             ) : isPdf && validWebUrl && !hasError ? (
               <div className="doc-pdf-container">
                 <iframe
-                  src={fileUrl!}
+                  src={blobUrl || fileUrl!}
                   title={title}
                   className="doc-pdf-frame"
                 />
@@ -209,7 +242,7 @@ export default function DocumentPreviewModal({
                   </div>
                 )}
                 <img
-                  src={fileUrl!}
+                  src={blobUrl || fileUrl!}
                   alt={title}
                   className="doc-preview-image"
                   style={{
