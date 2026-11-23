@@ -1,4 +1,4 @@
-import { api, isForbidden, unwrapList } from '../client'
+import { api, getApiErrorMessage, isForbidden, unwrapList } from '../client'
 
 export type PortalOverview = {
   total_bookings: number
@@ -130,6 +130,164 @@ export async function fetchPortalCustomers(): Promise<PortalCustomerRow[]> {
   )
   if (!result.data) return []
   return unwrapList<PortalCustomerRow>(result.data)
+}
+
+export type FlaggedCustomerRow = {
+  flag_id: string
+  customer_id: string
+  customer_name: string
+  customer_phone: string
+  customer_city: string
+  customer_status: string
+  rule_identifier: string
+  rule_label: string
+  severity: 'warning' | 'high' | 'review'
+  status: 'active' | 'reviewed' | 'resolved' | 'dismissed'
+  cancellations_24h: number
+  cancellations_7d: number
+  total_bookings: number
+  customer_cancellations: number
+  driver_cancellations: number
+  completed_bookings: number
+  cancellation_rate: string
+  last_cancelled_at: string | null
+  created_at: string | null
+  reviewed_at: string | null
+  reviewed_by_phone: string | null
+  admin_notes: string
+  recent_history: Array<{
+    booking_id: string
+    cancelled_at: string | null
+    from_state: string
+    reason: string
+  }>
+}
+
+export async function fetchPortalFlaggedCustomers(
+  status = 'active',
+  filters?: { severity?: string; search?: string },
+): Promise<FlaggedCustomerRow[]> {
+  const params = new URLSearchParams({ status })
+  if (filters?.severity && filters.severity !== 'all') params.set('severity', filters.severity)
+  if (filters?.search?.trim()) params.set('search', filters.search.trim())
+  const result = await tryPortal<{ results?: FlaggedCustomerRow[] } | FlaggedCustomerRow[]>(
+    `/admin/portal/customers/flagged/?${params.toString()}`,
+  )
+  if (!result.data) return []
+  return unwrapList<FlaggedCustomerRow>(result.data)
+}
+
+export async function reviewPortalFlaggedCustomer(
+  flagId: string,
+  action: 'review' | 'dismiss' | 'resolve',
+  notes = '',
+): Promise<{ success: boolean; data?: unknown }> {
+  try {
+    const { data } = await api.post(`/admin/portal/customers/flagged/${flagId}/action/`, {
+      action,
+      notes,
+    })
+    return { success: true, data }
+  } catch (err) {
+    return { success: false, data: err }
+  }
+}
+
+export type AbuseAdminActionRow = {
+  id: string
+  action: string
+  actor_name: string
+  actor_phone: string | null
+  customer_id: string | null
+  customer_name: string
+  customer_phone: string | null
+  flag_id: string | null
+  reason: string
+  created_at: string | null
+}
+
+export async function fetchAbuseAdminActions(filters: {
+  action?: string
+  customer?: string
+  flag?: string
+  start?: string
+  end?: string
+  page?: number
+}): Promise<{ count: number; page: number; page_size: number; results: AbuseAdminActionRow[] }> {
+  const params = new URLSearchParams()
+  if (filters.action && filters.action !== 'all') params.set('action', filters.action)
+  if (filters.customer?.trim()) params.set('customer', filters.customer.trim())
+  if (filters.flag?.trim()) params.set('flag', filters.flag.trim())
+  if (filters.start) params.set('start', filters.start)
+  if (filters.end) params.set('end', filters.end)
+  params.set('page', String(filters.page || 1))
+  params.set('page_size', '25')
+  const result = await tryPortal<{
+    count: number
+    page: number
+    page_size: number
+    results: AbuseAdminActionRow[]
+  }>(`/admin/portal/abuse-actions/?${params.toString()}`)
+  if (result.denied || result.unavailable || !result.data) {
+    throw new Error('Abuse action history is unavailable.')
+  }
+  return result.data
+}
+
+export type PortalBlockEvent = {
+  id: string
+  user_id: string
+  action: 'block' | 'unblock'
+  reason: string
+  actor_id: string | null
+  actor_phone: string | null
+  created_at: string | null
+}
+
+export type PortalBlockStatus = {
+  user_id: string
+  phone: string
+  role: string
+  name: string
+  is_blocked: boolean
+  block_reason: string
+  blocked_at: string | null
+  blocked_by_phone: string | null
+  history: PortalBlockEvent[]
+}
+
+export async function fetchPortalUserBlockStatus(userId: string): Promise<PortalBlockStatus> {
+  const { data } = await api.get<PortalBlockStatus>(`/admin/portal/users/${userId}/block-status/`)
+  return data
+}
+
+export type PortalUserBlockRow = Omit<PortalBlockStatus, 'history'>
+
+export async function searchPortalUsers(search: string, blocked?: boolean): Promise<PortalUserBlockRow[]> {
+  const { data } = await api.get<{ results?: PortalUserBlockRow[] } | PortalUserBlockRow[]>('/admin/portal/users/', {
+    params: {
+      search,
+      ...(blocked === undefined ? {} : { blocked: blocked ? '1' : '0' }),
+    },
+  })
+  return unwrapList<PortalUserBlockRow>(data)
+}
+
+async function postUserBlockAction(userId: string, action: 'block' | 'unblock', reason: string) {
+  try {
+    const { data } = await api.post<PortalBlockStatus>(`/admin/portal/users/${userId}/${action}/`, { reason })
+    return data
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error))
+  }
+}
+
+export function blockPortalUser(userId: string, reason: string) {
+  return postUserBlockAction(userId, 'block', reason)
+}
+
+export function unblockPortalUser(userId: string, reason: string) {
+  return postUserBlockAction(userId, 'unblock', reason)
 }
 
 export async function fetchPortalSettings(): Promise<Record<string, unknown> | null> {

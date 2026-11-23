@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard'
 import Drivers from './pages/Drivers'
 import Orders from './pages/Orders'
 import Customers from './pages/Customers'
+import Abuse from './pages/Abuse'
+import ActionHistory from './pages/ActionHistory'
 import Trips from './pages/Trips'
 import LiveTracking from './pages/LiveTracking'
 import ZonalMaps from './pages/ZonalMaps'
@@ -38,6 +40,8 @@ export default function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="drivers" element={<Drivers />} />
                 <Route path="customers" element={<Customers />} />
+                <Route path="abuse" element={<Abuse />} />
+                <Route path="action-history" element={<ActionHistory />} />
                 <Route path="orders" element={<Orders />} />
                 <Route path="trips" element={<Trips />} />
                 <Route path="live-tracking" element={<LiveTracking />} />
