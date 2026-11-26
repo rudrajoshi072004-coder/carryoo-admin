@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -82,6 +83,7 @@ function ReportsSkeleton() {
 }
 
 export default function Reports() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data, loading, error, setData } = useAsyncData(fetchReports, [])
 
@@ -173,8 +175,8 @@ export default function Reports() {
   return (
     <div className="reports-page cy-page">
       <PageHeader
-        title="Reports"
-        subtitle="Generate and download operational reports across revenue, fleet, and finance."
+        title={t('pages.reports.title')}
+        subtitle={t('pages.reports.subtitle')}
         crumbs={[{ label: 'Platform' }, { label: 'Reports' }]}
         actions={
           <Button variant="primary" disabled={generating} onClick={handleGenerate}>

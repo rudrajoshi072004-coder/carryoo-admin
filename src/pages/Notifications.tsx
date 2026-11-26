@@ -11,6 +11,7 @@ import {
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -88,6 +89,7 @@ function NotificationsSkeleton() {
 }
 
 export default function Notifications() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data, loading, error, setData } = useAsyncData(fetchNotifications, [])
 
@@ -189,8 +191,8 @@ export default function Notifications() {
   return (
     <div className="notifications-page cy-page">
       <PageHeader
-        title="Notifications"
-        subtitle="Send push, SMS, email, and in-app announcements to drivers and customers."
+        title={t('pages.notifications.title')}
+        subtitle={t('pages.notifications.subtitle')}
         crumbs={[{ label: 'Platform' }, { label: 'Notifications' }]}
         actions={
           <Button variant="primary" onClick={() => setComposeOpen(true)}>

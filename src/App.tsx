@@ -3,6 +3,8 @@ import { ToastProvider } from './components/Toast'
 import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './context/AuthContext'
 import DashboardLayout from './layouts/DashboardLayout'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { AdminLanguageProvider } from './i18n/LanguageContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Drivers from './pages/Drivers'
@@ -30,42 +32,46 @@ import SystemLogs from './pages/SystemLogs'
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route element={<ProtectedRoute />}>
-              <Route element={<DashboardLayout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="drivers" element={<Drivers />} />
-                <Route path="customers" element={<Customers />} />
-                <Route path="abuse" element={<Abuse />} />
-                <Route path="action-history" element={<ActionHistory />} />
-                <Route path="orders" element={<Orders />} />
-                <Route path="trips" element={<Trips />} />
-                <Route path="live-tracking" element={<LiveTracking />} />
-                <Route path="zonal-maps" element={<ZonalMaps />} />
-                <Route path="payments" element={<Payments />} />
-                <Route path="wallet" element={<Wallet />} />
-                <Route path="documents" element={<Documents />} />
-                <Route path="vehicles" element={<Vehicles />} />
-                <Route path="pricing" element={<Pricing />} />
-                <Route path="driver-offers" element={<DriverOffers />} />
-                <Route path="incentives" element={<Incentives />} />
-                <Route path="support" element={<Support />} />
-                <Route path="analytics" element={<Analytics />} />
-                <Route path="reports" element={<Reports />} />
-                <Route path="notifications" element={<Notifications />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="admin-users" element={<AdminUsers />} />
-                <Route path="system-logs" element={<SystemLogs />} />
-              </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </ToastProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AdminLanguageProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route element={<DashboardLayout />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="drivers" element={<Drivers />} />
+                    <Route path="customers" element={<Customers />} />
+                    <Route path="abuse" element={<Abuse />} />
+                    <Route path="action-history" element={<ActionHistory />} />
+                    <Route path="orders" element={<Orders />} />
+                    <Route path="trips" element={<Trips />} />
+                    <Route path="live-tracking" element={<LiveTracking />} />
+                    <Route path="zonal-maps" element={<ZonalMaps />} />
+                    <Route path="payments" element={<Payments />} />
+                    <Route path="wallet" element={<Wallet />} />
+                    <Route path="documents" element={<Documents />} />
+                    <Route path="vehicles" element={<Vehicles />} />
+                    <Route path="pricing" element={<Pricing />} />
+                    <Route path="driver-offers" element={<DriverOffers />} />
+                    <Route path="incentives" element={<Incentives />} />
+                    <Route path="support" element={<Support />} />
+                    <Route path="analytics" element={<Analytics />} />
+                    <Route path="reports" element={<Reports />} />
+                    <Route path="notifications" element={<Notifications />} />
+                    <Route path="settings" element={<Settings />} />
+                    <Route path="admin-users" element={<AdminUsers />} />
+                    <Route path="system-logs" element={<SystemLogs />} />
+                  </Route>
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </ToastProvider>
+        </AuthProvider>
+      </AdminLanguageProvider>
+    </ErrorBoundary>
   )
 }

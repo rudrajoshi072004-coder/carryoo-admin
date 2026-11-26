@@ -15,7 +15,7 @@ const ACTIONS = [
 ]
 
 function formatWhen(value: string | null) {
-  if (!value) return '-'
+  if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
@@ -94,7 +94,7 @@ export default function ActionHistory() {
       </div>
 
       {loading ? (
-        <div aria-busy="true"><Skeleton variant="card" /> Loading action history...</div>
+        <div aria-busy="true"><Skeleton variant="card" /> Loading action history…</div>
       ) : error ? (
         <EmptyState
           icon={<AlertTriangle size={22} />}
@@ -125,10 +125,10 @@ export default function ActionHistory() {
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{actionLabel(row.action)}</td>
-                  <td>{row.actor_name || row.actor_phone || '-'}</td>
-                  <td>{row.customer_name || row.customer_phone || '-'}</td>
-                  <td>{row.flag_id || '-'}</td>
-                  <td>{row.reason || '-'}</td>
+                  <td>{row.actor_name || row.actor_phone || '—'}</td>
+                  <td>{row.customer_name || row.customer_phone || '—'}</td>
+                  <td>{row.flag_id || '—'}</td>
+                  <td>{row.reason || '—'}</td>
                   <td>{formatWhen(row.created_at)}</td>
                 </tr>
               ))}

@@ -162,9 +162,22 @@ export type Booking = {
   estimated_duration_min?: number
   customer_phone?: string
   vehicle_category?: string
+  trip_type?: string
   driver?: string | null
-  driver_summary?: { name?: string; phone?: string } | null
+  driver_summary?: {
+    name?: string
+    phone?: string
+    driver_id?: string
+    driver_name?: string
+    driver_phone?: string
+    vehicle_number?: string
+    vehicle_type?: string
+    rating_avg?: string
+  } | null
   created_at: string
+  scheduled_at?: string | null
+  cancellation_reason?: string
+  requires_helper?: boolean
   notes?: string
   pricing_breakdown?: Record<string, string>
   has_pickup_parcel_photo?: boolean

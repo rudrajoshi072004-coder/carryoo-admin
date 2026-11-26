@@ -1,19 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Filter,
   MapPin,
-  Navigation,
   Radio,
   RefreshCw,
-  Signal,
-  Battery,
-  Gauge,
-  Clock,
   Truck,
+  ExternalLink,
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import { SidePanel } from '../components/ConfirmDialog'
-import { useToast } from '../components/Toast'
+import LiveMap from '../components/LiveMap'
 import {
   Button,
   Card,
@@ -24,10 +22,10 @@ import {
   StatusPill,
 } from '../components/ui'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { customerVehicleLabel, matchesCustomerVehicleFilter, type CustomerAppVehicleFilter } from '../lib/customerVehicles'
+import { formatCoords, googleMapsUrl } from '../lib/geo'
 import {
   fetchLiveTracking,
-  liveTrackingCities,
-  liveTrackingStatuses,
   liveTrackingVehicles,
   type LiveDriver,
   type LiveDriverStatus,
@@ -38,12 +36,6 @@ function statusColor(status: LiveDriverStatus) {
   if (status === 'Online') return 'var(--cy-success)'
   if (status === 'Busy') return 'var(--cy-warning)'
   return 'var(--cy-text-muted)'
-}
-
-function networkTone(network: string) {
-  if (network === '5G') return 'var(--cy-success)'
-  if (network === '4G') return 'var(--cy-info)'
-  return 'var(--cy-danger)'
 }
 
 function LiveTrackingSkeleton() {
@@ -60,46 +52,64 @@ function LiveTrackingSkeleton() {
 }
 
 export default function LiveTracking() {
-  const { data, loading, error } = useAsyncData(fetchLiveTracking, [])
-  const { toast } = useToast()
-  const [cityFilter, setCityFilter] = useState(liveTrackingCities[0])
-  const [statusFilter, setStatusFilter] = useState<(typeof liveTrackingStatuses)[number]>('All Status')
-  const [vehicleFilter, setVehicleFilter] = useState(liveTrackingVehicles[0])
+  const { t } = useAdminLanguage()
+  const [params, setParams] = useSearchParams()
+  const { data, loading, error, refetch } = useAsyncData(fetchLiveTracking, [])
+  const [statusFilter, setStatusFilter] = useState<'Active now' | 'Online' | 'Busy' | 'All Status'>(
+    params.get('filter') === 'active' ? 'Active now' : 'Active now',
+  )
+  const [vehicleFilter, setVehicleFilter] = useState<CustomerAppVehicleFilter>(liveTrackingVehicles[0])
   const [selected, setSelected] = useState<LiveDriver | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      refetch()
+    }, 12000)
+    return () => window.clearInterval(timer)
+  }, [refetch])
+
+  useEffect(() => {
+    if (!data) return
+    const focusId = params.get('driver')
+    if (focusId) {
+      const match = data.drivers.find((driver) => driver.id === focusId)
+      if (match) {
+        setSelected(match)
+        setPanelOpen(true)
+        return
+      }
+    }
+    if (selected) {
+      const next = data.drivers.find((driver) => driver.id === selected.id)
+      if (next) setSelected(next)
+    }
+  }, [data, params])
 
   const filtered = useMemo(() => {
     if (!data) return []
     return data.drivers.filter((driver) => {
-      const matchesCity = cityFilter === 'All Cities' || driver.city === cityFilter
-      const matchesStatus = statusFilter === 'All Status' || driver.status === statusFilter
-      const matchesVehicle =
-        vehicleFilter === 'All Vehicles' || driver.vehicleType === vehicleFilter
-      return matchesCity && matchesStatus && matchesVehicle
+      const matchesStatus =
+        statusFilter === 'All Status' ||
+        (statusFilter === 'Active now' && (driver.status === 'Online' || driver.status === 'Busy')) ||
+        driver.status === statusFilter
+      const matchesVehicle = matchesCustomerVehicleFilter(driver.vehicleType, vehicleFilter)
+      return matchesStatus && matchesVehicle
     })
-  }, [data, cityFilter, statusFilter, vehicleFilter])
-
-  const activeTrips = useMemo(
-    () => filtered.filter((d) => d.currentTrip),
-    [filtered],
-  )
+  }, [data, statusFilter, vehicleFilter])
 
   const openDriver = (driver: LiveDriver) => {
     setSelected(driver)
     setPanelOpen(true)
+    const next = new URLSearchParams(params)
+    next.set('driver', driver.id)
+    next.set('filter', 'active')
+    setParams(next, { replace: true })
   }
 
-  const handleRefresh = () => {
-    toast({
-      title: 'Map refreshed',
-      description: `Live positions updated · ${filtered.length} drivers visible`,
-      tone: 'success',
-    })
-  }
+  if (loading && !data) return <LiveTrackingSkeleton />
 
-  if (loading) return <LiveTrackingSkeleton />
-
-  if (error || !data) {
+  if ((error || !data) && !loading) {
     return (
       <Card>
         <EmptyState
@@ -107,7 +117,7 @@ export default function LiveTracking() {
           title="Unable to load live tracking"
           description={error ?? 'Could not fetch driver locations.'}
           action={
-            <Button variant="primary" onClick={() => window.location.reload()}>
+            <Button variant="primary" onClick={refetch}>
               Retry
             </Button>
           }
@@ -116,18 +126,20 @@ export default function LiveTracking() {
     )
   }
 
+  const live = data!
+
   return (
     <div className="live-tracking cy-page">
       <PageHeader
-        title="Live Tracking"
-        subtitle={`${data.onlineCount} drivers online · ${data.activeTrips} active trips · Updated ${data.lastUpdated}`}
+        title={t('pages.live.title')}
+        subtitle={`${live.onlineCount} drivers active now · ${live.drivers.filter((d) => d.hasLocation).length} with GPS · Updated ${live.lastUpdated}`}
         crumbs={[
           { label: 'Dashboard', to: '/' },
           { label: 'Operations' },
           { label: 'Live Tracking' },
         ]}
         actions={
-          <Button variant="secondary" onClick={handleRefresh}>
+          <Button variant="secondary" onClick={refetch}>
             <RefreshCw size={16} strokeWidth={1.75} />
             Refresh
           </Button>
@@ -142,30 +154,20 @@ export default function LiveTracking() {
             </span>
             <select
               className="cy-select"
-              value={cityFilter}
-              onChange={(e) => setCityFilter(e.target.value)}
-              aria-label="Filter by city"
-            >
-              {liveTrackingCities.map((city) => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
-            <select
-              className="cy-select"
               value={statusFilter}
               onChange={(e) =>
-                setStatusFilter(e.target.value as (typeof liveTrackingStatuses)[number])
+                setStatusFilter(e.target.value as typeof statusFilter)
               }
               aria-label="Filter by status"
             >
-              {liveTrackingStatuses.map((status) => (
+              {['Active now', 'Online', 'Busy', 'All Status'].map((status) => (
                 <option key={status} value={status}>{status}</option>
               ))}
             </select>
             <select
               className="cy-select"
               value={vehicleFilter}
-              onChange={(e) => setVehicleFilter(e.target.value)}
+              onChange={(e) => setVehicleFilter(e.target.value as CustomerAppVehicleFilter)}
               aria-label="Filter by vehicle"
             >
               {liveTrackingVehicles.map((vehicle) => (
@@ -176,7 +178,7 @@ export default function LiveTracking() {
         </div>
         <div className="cy-page__meta">
           <span>
-            Showing <strong>{filtered.length}</strong> drivers on map
+            Showing <strong>{filtered.length}</strong> active drivers
           </span>
         </div>
       </div>
@@ -184,130 +186,43 @@ export default function LiveTracking() {
       <div className="live-tracking__layout">
         <Card className="live-tracking__map-card">
           <CardHeader
-            title="Fleet Map"
-            subtitle="CSS map view — no external API"
+            title="Live map"
+            subtitle={selected ? `${selected.name} · ${selected.hasLocation ? 'GPS lock' : 'Waiting for GPS'}` : 'OpenStreetMap · live GPS'}
             action={
               <div className="live-tracking__legend">
                 <span><i className="live-tracking__dot live-tracking__dot--online" /> Online</span>
                 <span><i className="live-tracking__dot live-tracking__dot--busy" /> Busy</span>
-                <span><i className="live-tracking__dot live-tracking__dot--offline" /> Offline</span>
               </div>
             }
           />
           <CardBody className="live-tracking__map-body">
-            <div className="live-map" role="img" aria-label="Live driver map">
-              <svg className="live-map__svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-                <defs>
-                  <pattern id="liveGrid" width="10" height="10" patternUnits="userSpaceOnUse">
-                    <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth="0.3" />
-                  </pattern>
-                  <linearGradient id="mapWater" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#dbeafe" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#eff6ff" stopOpacity="0.15" />
-                  </linearGradient>
-                </defs>
-                <rect width="100" height="100" fill="url(#liveGrid)" />
-                <rect width="100" height="100" fill="url(#mapWater)" />
-                <path
-                  d="M0,35 Q25,28 50,32 T100,30 L100,42 Q70,48 45,44 T0,46 Z"
-                  fill="rgba(34,197,94,0.08)"
-                  stroke="rgba(34,197,94,0.15)"
-                  strokeWidth="0.4"
-                />
-                <path
-                  d="M8,55 C20,50 35,58 50,54 S80,48 95,52 L95,68 C75,72 55,66 35,70 S15,74 8,68 Z"
-                  fill="rgba(37,99,235,0.06)"
-                  stroke="rgba(37,99,235,0.12)"
-                  strokeWidth="0.4"
-                />
-                <path
-                  d="M15,18 L28,22 L32,12 L45,16 L52,8 L68,14 L75,22 L88,18"
-                  fill="none"
-                  stroke="rgba(100,116,139,0.25)"
-                  strokeWidth="0.6"
-                  strokeDasharray="2 1.5"
-                />
-                <path
-                  d="M12,78 L30,74 L42,82 L58,76 L72,84 L90,78"
-                  fill="none"
-                  stroke="rgba(100,116,139,0.2)"
-                  strokeWidth="0.5"
-                />
-              </svg>
-
-              {filtered.map((driver) => (
-                <button
-                  key={driver.id}
-                  type="button"
-                  className={`live-map__marker live-map__marker--${driver.status.toLowerCase()} ${selected?.id === driver.id ? 'is-selected' : ''}`}
-                  style={{ left: `${driver.lng}%`, top: `${driver.lat}%` }}
-                  onClick={() => openDriver(driver)}
-                  aria-label={`${driver.name}, ${driver.status}`}
-                >
-                  <span className="live-map__marker-pulse" aria-hidden />
-                  <span className="live-map__marker-dot" aria-hidden />
-                  <span className="live-map__marker-label">{driver.initials}</span>
-
-                  {selected?.id === driver.id ? (
-                    <div
-                      className="live-map__popup"
-                      onClick={(e) => e.stopPropagation()}
-                      role="dialog"
-                      aria-label={`${driver.name} details`}
-                    >
-                      <div className="live-map__popup-header">
-                        <div>
-                          <strong>{driver.name}</strong>
-                          <span>{driver.vehicleType} · {driver.vehicle}</span>
-                        </div>
-                        <StatusPill status={driver.status} tone={driver.status} />
-                      </div>
-                      <div className="live-map__popup-grid">
-                        <div><Battery size={13} /> {driver.battery}%</div>
-                        <div style={{ color: networkTone(driver.network) }}>
-                          <Signal size={13} /> {driver.network}
-                        </div>
-                        <div><Gauge size={13} /> {driver.speed} km/h</div>
-                        <div><Clock size={13} /> ETA {driver.eta}</div>
-                      </div>
-                      {driver.currentTrip && driver.route ? (
-                        <div className="live-map__popup-trip">
-                          <Navigation size={13} />
-                          <div>
-                            <span className="cy-table__mono">{driver.currentTrip}</span>
-                            <span>{driver.route.pickup} → {driver.route.drop}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="live-map__popup-idle">Available — no active trip</div>
-                      )}
-                    </div>
-                  ) : null}
-                </button>
-              ))}
-            </div>
+            <LiveMap
+              drivers={filtered}
+              selectedId={selected?.id ?? null}
+              onSelect={openDriver}
+            />
           </CardBody>
         </Card>
 
         <Card className="live-tracking__trips-card">
           <CardHeader
-            title="Active Trips"
-            subtitle={`${activeTrips.length} in progress`}
+            title="Active now"
+            subtitle={`${filtered.length} drivers`}
           />
           <CardBody className="live-tracking__trips-body">
-            {activeTrips.length === 0 ? (
+            {filtered.length === 0 ? (
               <EmptyState
                 icon={<Truck size={22} strokeWidth={1.75} />}
-                title="No active trips"
-                description="No drivers on trip match your current filters."
+                title="No active drivers"
+                description="Drivers appear here when they go online or start a trip."
               />
             ) : (
               <ul className="live-tracking__trip-list">
-                {activeTrips.map((driver) => (
+                {filtered.map((driver) => (
                   <li key={driver.id}>
                     <button
                       type="button"
-                      className="live-tracking__trip-item"
+                      className={`live-tracking__trip-item ${selected?.id === driver.id ? 'is-selected' : ''}`}
                       onClick={() => openDriver(driver)}
                     >
                       <div className="live-tracking__trip-avatar" style={{ color: statusColor(driver.status) }}>
@@ -318,7 +233,7 @@ export default function LiveTracking() {
                           <span className="live-tracking__trip-name">{driver.name}</span>
                           <StatusPill status={driver.status} tone={driver.status} />
                         </div>
-                        <span className="cy-table__mono">{driver.currentTrip}</span>
+                        <span className="cy-table__mono">{driver.vehicle} · {customerVehicleLabel(driver.vehicleType)}</span>
                         {driver.route ? (
                           <span className="live-tracking__trip-route">
                             <MapPin size={12} />
@@ -326,9 +241,9 @@ export default function LiveTracking() {
                           </span>
                         ) : null}
                         <div className="live-tracking__trip-meta">
+                          <span>{driver.hasLocation ? 'GPS live' : 'No GPS yet'}</span>
                           <span>{driver.speed} km/h</span>
-                          <span>ETA {driver.eta}</span>
-                          <span>{driver.city}</span>
+                          {driver.eta !== '—' ? <span>ETA {driver.eta}</span> : null}
                         </div>
                       </div>
                     </button>
@@ -357,24 +272,28 @@ export default function LiveTracking() {
               </div>
               <div>
                 <h3>{selected.name}</h3>
-                <p>{selected.id} · {selected.phone}</p>
+                <p>{selected.phone || '—'} · {selected.city}</p>
                 <StatusPill status={selected.status} tone={selected.status} />
               </div>
             </div>
 
             <dl className="live-tracking__panel-dl">
-              <div><dt>Vehicle</dt><dd>{selected.vehicleType} · {selected.vehicle}</dd></div>
-              <div><dt>City</dt><dd>{selected.city}</dd></div>
+              <div><dt>Vehicle</dt><dd>{customerVehicleLabel(selected.vehicleType)} · {selected.vehicle}</dd></div>
               <div><dt>Speed</dt><dd>{selected.speed} km/h</dd></div>
               <div><dt>ETA</dt><dd>{selected.eta}</dd></div>
-              <div><dt>Battery</dt><dd>{selected.battery}%</dd></div>
-              <div><dt>Network</dt><dd>{selected.network}</dd></div>
-              <div><dt>Position</dt><dd>{selected.lat.toFixed(0)}% N · {selected.lng.toFixed(0)}% E</dd></div>
+              <div>
+                <dt>GPS</dt>
+                <dd>
+                  {selected.hasLocation
+                    ? formatCoords(selected.lat, selected.lng)
+                    : 'Not sharing location yet'}
+                </dd>
+              </div>
             </dl>
 
             {selected.currentTrip && selected.route ? (
               <div className="live-tracking__panel-trip">
-                <h4>Current Trip</h4>
+                <h4>Current trip</h4>
                 <p className="cy-table__mono">{selected.currentTrip}</p>
                 <p><strong>Pickup:</strong> {selected.route.pickup}</p>
                 <p><strong>Drop:</strong> {selected.route.drop}</p>
@@ -383,18 +302,21 @@ export default function LiveTracking() {
               <p className="live-tracking__panel-idle">Driver is online and available for dispatch.</p>
             )}
 
-            <Button
-              variant="primary"
-              onClick={() =>
-                toast({
-                  title: 'Ping sent',
-                  description: `Location request sent to ${selected.name}`,
-                  tone: 'info',
-                })
-              }
-            >
-              Request Location Update
-            </Button>
+            {selected.hasLocation ? (
+              <a
+                className="cy-btn cy-btn--primary"
+                href={googleMapsUrl(selected.lat, selected.lng)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink size={16} strokeWidth={1.75} />
+                Open in Google Maps
+              </a>
+            ) : (
+              <p className="live-tracking__panel-idle">
+                Live map pin appears as soon as this driver sends GPS.
+              </p>
+            )}
           </div>
         ) : null}
       </SidePanel>

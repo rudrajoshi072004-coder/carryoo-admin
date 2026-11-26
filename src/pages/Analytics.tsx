@@ -23,6 +23,7 @@ import {
   CircleX,
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import { Card, CardHeader, CardBody, Button, EmptyState, Skeleton } from '../components/ui'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatINR } from '../lib/utils'
@@ -72,6 +73,7 @@ function AnalyticsSkeleton() {
 }
 
 export default function Analytics() {
+  const { t } = useAdminLanguage()
   const { data, loading, error } = useAsyncData(fetchAnalytics, [])
 
   if (loading) return <AnalyticsSkeleton />
@@ -95,8 +97,8 @@ export default function Analytics() {
   return (
     <div className="analytics-page cy-page">
       <PageHeader
-        title="Analytics"
-        subtitle="Deep-dive into revenue, fleet performance, and operational trends."
+        title={t('pages.analytics.title')}
+        subtitle={t('pages.analytics.subtitle')}
         crumbs={[{ label: 'Insights' }, { label: 'Analytics' }]}
       />
 

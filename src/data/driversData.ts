@@ -3,15 +3,10 @@ export type DriverStatus = 'Online' | 'Busy' | 'Offline' | 'Suspended' | 'New' |
 export type DocStatus = 'Verified' | 'Pending' | 'Rejected' | 'Expired'
 
 export interface DriverDocument {
-  id?: string
   type: string
-  documentType?: string
   number: string
   status: DocStatus
   expiry: string
-  url?: string
-  isDeviceCache?: boolean
-  fileKey?: string
 }
 
 export interface DriverTrip {
@@ -31,6 +26,9 @@ export interface DriverActivity {
 export interface Driver {
   id: string
   displayId?: string
+  userId?: string | null
+  isBlocked?: boolean
+  blockReason?: string
   name: string
   phone: string
   accountPhone?: string
@@ -39,8 +37,6 @@ export interface Driver {
   vehicle: string
   vehicleType: string
   city: string
-  acceptsOutstation?: boolean
-  trainingCompleted?: boolean
   rating: number
   wallet: number
   status: DriverStatus
@@ -82,6 +78,7 @@ export interface Driver {
   recentTrips: DriverTrip[]
   walletHistory: { label: string; amount: string; type: 'credit' | 'debit'; time: string }[]
   recentActivity: DriverActivity[]
+  isFavorite?: boolean
 }
 
 export const drivers: Driver[] = [
@@ -743,4 +740,4 @@ export const driverStatuses: Array<'All Status' | DriverStatus> = [
   'Offline',
   'Suspended',
 ]
-export const vehicleTypes = ['All Vehicles', 'Bike', 'Auto', 'Pickup', 'Mini Truck', 'Tempo']
+export { CUSTOMER_APP_VEHICLE_FILTERS as vehicleTypes } from '../lib/customerVehicles'

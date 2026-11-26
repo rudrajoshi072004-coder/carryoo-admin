@@ -14,6 +14,7 @@ import KpiCard from '../components/KpiCard'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -57,6 +58,7 @@ function PaymentsSkeleton() {
 }
 
 export default function Payments() {
+  const { t } = useAdminLanguage()
   const { data, loading, error } = useAsyncData(fetchPayments, [])
   const { toast } = useToast()
   const [search, setSearch] = useState('')
@@ -139,8 +141,8 @@ export default function Payments() {
   return (
     <div className="payments cy-page">
       <PageHeader
-        title="Payments"
-        subtitle="Revenue, settlements, payouts, and transaction ledger"
+        title={t('pages.payments.title')}
+        subtitle={t('pages.payments.subtitle')}
         crumbs={[
           { label: 'Dashboard', to: '/' },
           { label: 'Finance' },

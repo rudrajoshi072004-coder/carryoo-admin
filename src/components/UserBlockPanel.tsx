@@ -73,10 +73,10 @@ export function UserBlockPanel({
         <h3 style={{ margin: 0, fontSize: 14 }}>Account block</h3>
         {loading ? null : <StatusPill status={blocked ? 'Blocked' : 'Active'} tone={blocked ? 'cancelled' : 'completed'} />}
       </div>
-      {loading ? <p style={{ margin: '10px 0 0', fontSize: 13 }}>Loading block status...</p> : null}
+      {loading ? <p style={{ margin: '10px 0 0', fontSize: 13 }}>Loading block status…</p> : null}
       {!loading && blocked ? (
         <p style={{ margin: '10px 0 0', fontSize: 13 }}>
-          Reason: {currentReason || '-'}
+          Reason: {currentReason || '—'}
         </p>
       ) : null}
       <label style={{ display: 'block', marginTop: 12, fontSize: 12 }}>
@@ -92,11 +92,11 @@ export function UserBlockPanel({
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         {blocked ? (
           <Button variant="primary" disabled={busy || loading} onClick={() => void submit('unblock')}>
-            {busy ? 'Saving...' : 'Unblock'}
+            {busy ? 'Saving…' : 'Unblock'}
           </Button>
         ) : (
           <Button variant="primary" disabled={busy || loading} onClick={() => void submit('block')}>
-            {busy ? 'Saving...' : 'Block user'}
+            {busy ? 'Saving…' : 'Block user'}
           </Button>
         )}
       </div>

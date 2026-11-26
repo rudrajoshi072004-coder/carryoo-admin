@@ -103,6 +103,16 @@ api.interceptors.response.use(
   },
 )
 
+export function unwrapRecord<T extends object>(raw: unknown): T {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>
+    if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
+      return obj.data as T
+    }
+  }
+  return raw as T
+}
+
 export function unwrapList<T>(raw: unknown): T[] {
   if (Array.isArray(raw)) return raw as T[]
   if (raw && typeof raw === 'object' && Array.isArray((raw as { results?: T[] }).results)) {

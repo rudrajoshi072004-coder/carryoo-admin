@@ -11,6 +11,7 @@ import {
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -67,6 +68,7 @@ function AdminUsersSkeleton() {
 }
 
 export default function AdminUsers() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data: source, loading, error, setData } = useAsyncData(fetchAdminUsers, [])
   const [users, setUsers] = useState<AdminUser[] | null>(null)
@@ -187,8 +189,8 @@ export default function AdminUsers() {
   return (
     <div className="admin-users-page cy-page">
       <PageHeader
-        title="Admin Users"
-        subtitle="Manage admin accounts, roles, and access permissions."
+        title={t('pages.admins.title')}
+        subtitle={t('pages.admins.subtitle')}
         crumbs={[{ label: 'Platform' }, { label: 'Admin Users' }]}
         actions={
           <Button variant="primary" onClick={openCreate}>

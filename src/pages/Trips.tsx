@@ -17,6 +17,7 @@ import DocumentPreviewModal from '../components/DocumentPreviewModal'
 import { SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -375,6 +376,7 @@ function TripPanel({
 }
 
 export default function Trips() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data: trips, loading, error } = useAsyncData(fetchTrips, [])
   const [search, setSearch] = useState('')
@@ -470,8 +472,8 @@ export default function Trips() {
   return (
     <div className="trips-page cy-page">
       <PageHeader
-        title="Trips"
-        subtitle="Monitor trip history, active routes, and delivery timelines."
+        title={t('pages.trips.title')}
+        subtitle={t('pages.trips.subtitle')}
         crumbs={[
           { label: 'Home', to: '/' },
           { label: 'Trips' },

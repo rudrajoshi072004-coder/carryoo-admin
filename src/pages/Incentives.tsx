@@ -11,6 +11,7 @@ import {
 import { SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   EmptyState,
@@ -19,6 +20,7 @@ import {
   StatusPill,
 } from '../components/ui'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { matchesCustomerVehicleFilter, type CustomerAppVehicleFilter } from '../lib/customerVehicles'
 import { formatINR, paginate } from '../lib/utils'
 import { fetchIncentivesAdmin } from '../api/services/adminData'
 import {
@@ -42,7 +44,7 @@ const emptyForm = {
   name: '',
   type: 'Peak Hour' as IncentiveType,
   city: 'Mumbai',
-  vehicle: 'Bike',
+  vehicle: '2 Wheeler',
   bonusAmount: '',
   period: '',
   description: '',
@@ -67,6 +69,7 @@ function IncentivesSkeleton() {
 }
 
 export default function Incentives() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data: source, loading, error, setData } = useAsyncData(fetchIncentives, [])
   const [items, setItems] = useState<Incentive[] | null>(null)
@@ -77,7 +80,7 @@ export default function Incentives() {
   const [typeFilter, setTypeFilter] = useState(incentiveTypes[0])
   const [statusFilter, setStatusFilter] = useState(incentiveStatuses[0])
   const [cityFilter, setCityFilter] = useState(incentiveCities[0])
-  const [vehicleFilter, setVehicleFilter] = useState(incentiveVehicles[0])
+  const [vehicleFilter, setVehicleFilter] = useState<CustomerAppVehicleFilter>(incentiveVehicles[0])
   const [page, setPage] = useState(1)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -98,7 +101,7 @@ export default function Incentives() {
       const matchesType = typeFilter === 'All Types' || inc.type === typeFilter
       const matchesStatus = statusFilter === 'All Status' || inc.status === statusFilter
       const matchesCity = cityFilter === 'All Cities' || inc.city === cityFilter
-      const matchesVehicle = vehicleFilter === 'All Vehicles' || inc.vehicle === vehicleFilter
+      const matchesVehicle = matchesCustomerVehicleFilter(inc.vehicle, vehicleFilter)
 
       return matchesSearch && matchesType && matchesStatus && matchesCity && matchesVehicle
     })
@@ -177,8 +180,8 @@ export default function Incentives() {
   return (
     <div className="incentives-page cy-page">
       <PageHeader
-        title="Incentives"
-        subtitle="Create and manage driver bonus programs by city, vehicle, and trip targets."
+        title={t('pages.incentives.title')}
+        subtitle={t('pages.incentives.subtitle')}
         crumbs={[{ label: 'Operations' }, { label: 'Incentives' }]}
         actions={
           <Button variant="primary" onClick={() => setCreateOpen(true)}>
@@ -210,7 +213,7 @@ export default function Incentives() {
             <select className="cy-select" value={cityFilter} onChange={(e) => { setCityFilter(e.target.value); setPage(1) }} aria-label="Filter by city">
               {incentiveCities.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select className="cy-select" value={vehicleFilter} onChange={(e) => { setVehicleFilter(e.target.value); setPage(1) }} aria-label="Filter by vehicle">
+            <select className="cy-select" value={vehicleFilter} onChange={(e) => { setVehicleFilter(e.target.value as CustomerAppVehicleFilter); setPage(1) }} aria-label="Filter by vehicle">
               {incentiveVehicles.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
           </div>

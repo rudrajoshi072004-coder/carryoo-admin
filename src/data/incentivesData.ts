@@ -49,14 +49,7 @@ export const incentiveCities = [
   'Kolkata',
 ]
 
-export const incentiveVehicles = [
-  'All Vehicles',
-  'Bike',
-  'Auto',
-  'Pickup',
-  'Mini Truck',
-  'Tempo',
-]
+export { CUSTOMER_APP_VEHICLE_FILTERS as incentiveVehicles } from '../lib/customerVehicles'
 
 export const incentives: Incentive[] = [
   {

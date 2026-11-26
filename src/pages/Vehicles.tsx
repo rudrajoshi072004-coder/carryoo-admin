@@ -13,6 +13,7 @@ import {
 } from '../components/ui'
 import { PermissionBanner } from '../components/PermissionBanner'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../context/AuthContext'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { getApiErrorMessage } from '../api/client'
@@ -63,6 +64,7 @@ function VehiclesSkeleton() {
 }
 
 export default function Vehicles() {
+  const { t } = useAdminLanguage()
   const { isAdmin } = useAuth()
   const { toast } = useToast()
   const { data: categories, loading, error, refetch, setData } = useAsyncData(
@@ -203,8 +205,8 @@ export default function Vehicles() {
   return (
     <div className="vehicles-page cy-page">
       <PageHeader
-        title="Vehicle Types"
-        subtitle="The customer app shows only 2 Wheeler, Scooty, 3 Wheeler, and Tata ACE. Other types stay hidden from customers."
+        title={t('pages.vehicles.title')}
+        subtitle={t('pages.vehicles.subtitle')}
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Vehicle Types' }]}
         actions={
           <>

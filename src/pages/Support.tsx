@@ -11,6 +11,7 @@ import {
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   EmptyState,
@@ -60,6 +61,7 @@ function SupportSkeleton() {
 }
 
 export default function Support() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data, loading, error } = useAsyncData(fetchSupport, [])
 
@@ -174,8 +176,8 @@ export default function Support() {
   return (
     <div className="support-page cy-page">
       <PageHeader
-        title="Support"
-        subtitle="Manage tickets, live chats, and customer issues across all channels."
+        title={t('pages.support.title')}
+        subtitle={t('pages.support.subtitle')}
         crumbs={[{ label: 'Operations' }, { label: 'Support' }]}
       />
 

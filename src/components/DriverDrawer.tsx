@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   X,
   Star,
@@ -12,23 +13,16 @@ import {
   Building2,
   Activity,
   Route,
-  Eye,
-  Camera,
-  CreditCard,
-  Smartphone,
-  ShieldCheck,
+  Radio,
+  Download,
 } from 'lucide-react'
-import DocumentPreviewModal from './DocumentPreviewModal'
-import type { Driver, DriverDocument } from '../data/driversData'
+import type { Driver, DriverTrip } from '../data/driversData'
+import { fetchDriverBookingsAdmin } from '../api/services/adminData'
+import { bookingToDrawerTrip, downloadDriverDetailCsv } from '../lib/driverExport'
+import { useToast } from './Toast'
+import { invalidateCache } from '../lib/queryCache'
+import { UserBlockPanel } from './UserBlockPanel'
 import './DriverDrawer.css'
-
-function getDocIcon(type: string) {
-  const t = (type || '').toLowerCase()
-  if (t.includes('selfie') || t.includes('photo')) return <Camera size={13} />
-  if (t.includes('rc') || t.includes('registration') || t.includes('vehicle')) return <Car size={13} />
-  if (t.includes('pan') || t.includes('aadhaar') || t.includes('license') || t.includes('dl')) return <CreditCard size={13} />
-  return <FileText size={13} />
-}
 
 interface DriverDrawerProps {
   driver: Driver | null
@@ -57,7 +51,10 @@ export default function DriverDrawer({
   onApproveKyc,
   approvingKyc = false,
 }: DriverDrawerProps) {
-  const [selectedDoc, setSelectedDoc] = useState<DriverDocument | null>(null)
+  const { toast } = useToast()
+  const [trips, setTrips] = useState<DriverTrip[]>([])
+  const [tripsLoading, setTripsLoading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -72,7 +69,54 @@ export default function DriverDrawer({
     }
   }, [open, onClose])
 
+  useEffect(() => {
+    if (!open || !driver) {
+      setTrips([])
+      return
+    }
+    let cancelled = false
+    setTripsLoading(true)
+    fetchDriverBookingsAdmin(driver)
+      .then((bookings) => {
+        if (!cancelled) setTrips(bookings.map(bookingToDrawerTrip))
+      })
+      .catch(() => {
+        if (!cancelled) setTrips(driver.recentTrips)
+      })
+      .finally(() => {
+        if (!cancelled) setTripsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, driver])
+
+  const handleDownload = async () => {
+    if (!driver || downloading) return
+    setDownloading(true)
+    try {
+      invalidateCache('GET:/bookings')
+      const result = await downloadDriverDetailCsv(driver)
+      toast({
+        title: 'Driver data downloaded',
+        description: result.trips
+          ? `${result.trips} trip${result.trips === 1 ? '' : 's'} plus profile details saved as CSV.`
+          : 'Profile details saved. No trips found for this driver yet.',
+      })
+    } catch (err) {
+      toast({
+        title: 'Download failed',
+        description: err instanceof Error ? err.message : 'Could not fetch this driver’s trips.',
+        tone: 'error',
+      })
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   if (!driver) return null
+
+  const visibleTrips = trips.length ? trips : driver.recentTrips
 
   return (
     <>
@@ -97,12 +141,27 @@ export default function DriverDrawer({
               {driver.initials}
             </div>
             <div>
-              <h2 className="driver-drawer__name">{driver.name}</h2>
+              <h2 className="driver-drawer__name">
+                {driver.name}
+                {driver.isFavorite ? (
+                  <span className="driver-favorite-badge">Favorite</span>
+                ) : null}
+              </h2>
               <p className="driver-drawer__id">{driver.displayId ?? `DRV-${driver.id.replace(/-/g, '').slice(-6).toUpperCase()}`}</p>
             </div>
           </div>
           <div className="driver-drawer__header-actions">
             <span className={statusClass(driver.status)}>{driver.status}</span>
+            <button
+              type="button"
+              className="driver-drawer__download-icon"
+              onClick={handleDownload}
+              disabled={downloading}
+              title="Download all driver data as CSV"
+              aria-label="Download all driver data as CSV"
+            >
+              <Download size={16} />
+            </button>
             <button
               type="button"
               className="driver-drawer__close"
@@ -115,7 +174,7 @@ export default function DriverDrawer({
         </header>
 
         <div className="driver-drawer__body">
-          {/* Profile */}
+          {driver.userId ? <UserBlockPanel userId={driver.userId} /> : null}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <UserRound size={15} /> Driver Profile
@@ -137,6 +196,32 @@ export default function DriverDrawer({
                 {approvingKyc ? 'Approving…' : 'Approve KYC'}
               </button>
             ) : null}
+            <button
+              type="button"
+              className="driver-drawer__download"
+              onClick={handleDownload}
+              disabled={downloading}
+            >
+              <Download size={15} strokeWidth={1.75} />
+              {downloading ? 'Downloading…' : 'Download all data (CSV)'}
+            </button>
+            {(driver.status === 'Online' || driver.status === 'Busy') ? (
+              <Link
+                to={`/live-tracking?filter=active&driver=${encodeURIComponent(driver.id)}`}
+                className="driver-drawer__live-link"
+              >
+                <Radio size={15} strokeWidth={1.75} />
+                View live location
+              </Link>
+            ) : (
+              <Link
+                to={`/live-tracking?driver=${encodeURIComponent(driver.id)}`}
+                className="driver-drawer__live-link driver-drawer__live-link--ghost"
+              >
+                <Radio size={15} strokeWidth={1.75} />
+                Open live map
+              </Link>
+            )}
             <div className="drawer-grid">
               <div className="drawer-field">
                 <span className="drawer-field__label">Phone</span>
@@ -173,26 +258,6 @@ export default function DriverDrawer({
                 <span className="drawer-field__value">{driver.experience}</span>
               </div>
               <div className="drawer-field">
-                <span className="drawer-field__label">Outstation Trips</span>
-                <span className="drawer-field__value">
-                  {driver.acceptsOutstation !== false ? (
-                    <span style={{ color: "#16a34a", fontWeight: 700 }}>Opted In</span>
-                  ) : (
-                    <span style={{ color: "#64748b", fontWeight: 600 }}>Opted Out</span>
-                  )}
-                </span>
-              </div>
-              <div className="drawer-field">
-                <span className="drawer-field__label">Mandatory Training</span>
-                <span className="drawer-field__value">
-                  {driver.trainingCompleted ? (
-                    <span style={{ color: "#16a34a", fontWeight: 700 }}>✓ Completed</span>
-                  ) : (
-                    <span style={{ color: "#d97706", fontWeight: 700 }}>Pending Induction</span>
-                  )}
-                </span>
-              </div>
-              <div className="drawer-field">
                 <span className="drawer-field__label">Rating</span>
                 <span className="drawer-field__value drawer-field__value--rating">
                   <Star size={13} fill="#f59e0b" color="#f59e0b" /> {driver.rating.toFixed(1)}
@@ -201,111 +266,36 @@ export default function DriverDrawer({
             </div>
           </section>
 
-          {/* Documents */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
-              <FileText size={15} /> KYC Verification Documents
+              <FileText size={15} /> Documents
             </h3>
-
-            {driver.documents.length > 0 ? (
-              <>
-                <div className="drawer-docs-summary">
-                  <span className="drawer-docs-summary__text">
-                    <ShieldCheck size={14} color="#059669" />
-                    {driver.documents.length} Documents Submitted
-                  </span>
-                  <span
-                    className={`drawer-docs-summary__pill ${
-                      driver.documents.filter((d) => d.status === 'Verified').length === driver.documents.length
-                        ? ''
-                        : 'drawer-docs-summary__pill--pending'
-                    }`}
-                  >
-                    {driver.documents.filter((d) => d.status === 'Verified').length === driver.documents.length
-                      ? 'All Verified'
-                      : `${driver.documents.filter((d) => d.status === 'Verified').length}/${driver.documents.length} Verified`}
-                  </span>
-                </div>
-
-                <div className="drawer-docs-grid">
+            <div className="drawer-table-wrap">
+              <table className="drawer-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Number</th>
+                    <th>Expiry</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {driver.documents.map((doc) => (
-                    <div key={doc.type} className="drawer-doc-card">
-                      <div className="drawer-doc-card__head">
-                        <span className="drawer-doc-card__title" title={doc.type}>
-                          {getDocIcon(doc.type)}
-                          <span>{doc.type}</span>
-                        </span>
+                    <tr key={doc.type}>
+                      <td>{doc.type}</td>
+                      <td className="drawer-mono">{doc.number}</td>
+                      <td>{doc.expiry}</td>
+                      <td>
                         <span className={docStatusClass(doc.status)}>{doc.status}</span>
-                      </div>
-
-                      <div
-                        className="drawer-doc-card__preview"
-                        onClick={() => setSelectedDoc(doc)}
-                        title="Click to inspect document full screen"
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            setSelectedDoc(doc)
-                          }
-                        }}
-                      >
-                        {doc.url ? (
-                          <>
-                            <img src={doc.url} alt={doc.type} className="drawer-doc-card__img" />
-                            <div className="drawer-doc-card__overlay">
-                              <Eye size={13} />
-                              <span>Inspect</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="drawer-doc-card__placeholder">
-                            {doc.isDeviceCache ? (
-                              <>
-                                <Smartphone size={22} color="#2563eb" />
-                                <span className="drawer-doc-card__placeholder-label">Mobile Capture</span>
-                                <span className="drawer-doc-card__device-badge">App Upload</span>
-                              </>
-                            ) : (
-                              <>
-                                {getDocIcon(doc.type)}
-                                <span className="drawer-doc-card__placeholder-label">Document Photo</span>
-                                <span className="drawer-doc-card__placeholder-sub">Click to review details</span>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="drawer-doc-card__footer">
-                        <span className="drawer-doc-card__num" title={doc.number}>
-                          {doc.number && doc.number !== '—'
-                            ? doc.number
-                            : doc.isDeviceCache
-                              ? 'Device Photo'
-                              : 'Submitted'}
-                        </span>
-                        <button
-                          type="button"
-                          className="drawer-doc-card__btn"
-                          title={`Inspect ${doc.type}`}
-                          onClick={() => setSelectedDoc(doc)}
-                        >
-                          <Eye size={11} />
-                          <span>View</span>
-                        </button>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </>
-            ) : (
-              <p className="drawer-section__meta">No documents uploaded yet.</p>
-            )}
+                </tbody>
+              </table>
+            </div>
           </section>
 
-          {/* Wallet */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Wallet size={15} /> Wallet
@@ -331,24 +321,27 @@ export default function DriverDrawer({
             </ul>
           </section>
 
-          {/* Trips */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Route size={15} /> Trips
             </h3>
-            <p className="drawer-section__meta">{driver.trips.toLocaleString('en-IN')} lifetime trips</p>
+            <p className="drawer-section__meta">
+              {tripsLoading
+                ? 'Loading trips from backend…'
+                : `${(trips.length || driver.trips).toLocaleString('en-IN')} trips`}
+            </p>
             <div className="drawer-table-wrap">
               <table className="drawer-table">
                 <thead>
                   <tr>
                     <th>Trip</th>
-                    <th>Route</th>
+                    <th>From → To</th>
                     <th>Fare</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {driver.recentTrips.map((trip) => (
+                  {visibleTrips.map((trip) => (
                     <tr key={trip.id}>
                       <td>
                         <div className="drawer-table__primary">{trip.id}</div>
@@ -364,12 +357,16 @@ export default function DriverDrawer({
                       </td>
                     </tr>
                   ))}
+                  {!tripsLoading && visibleTrips.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="drawer-table__secondary">No trips found for this driver yet.</td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
           </section>
 
-          {/* Performance */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Activity size={15} /> Performance
@@ -402,7 +399,6 @@ export default function DriverDrawer({
             </div>
           </section>
 
-          {/* Vehicle */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Car size={15} /> Vehicle Details
@@ -443,7 +439,6 @@ export default function DriverDrawer({
             </div>
           </section>
 
-          {/* Emergency */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Phone size={15} /> Emergency Contact
@@ -464,7 +459,6 @@ export default function DriverDrawer({
             </div>
           </section>
 
-          {/* Bank */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Building2 size={15} /> Bank Details
@@ -493,7 +487,6 @@ export default function DriverDrawer({
             </div>
           </section>
 
-          {/* Recent Activity */}
           <section className="drawer-section">
             <h3 className="drawer-section__title">
               <Activity size={15} /> Recent Activity
@@ -512,39 +505,6 @@ export default function DriverDrawer({
           </section>
         </div>
       </aside>
-
-      <DocumentPreviewModal
-        open={Boolean(selectedDoc)}
-        onClose={() => setSelectedDoc(null)}
-        title={selectedDoc ? `${selectedDoc.type} · ${driver.name}` : 'Document Preview'}
-        subtitle={`Driver: ${driver.name} (${driver.displayId ?? driver.id})`}
-        fileUrl={selectedDoc?.url}
-        status={selectedDoc?.status}
-        metadata={
-          selectedDoc
-            ? [
-                { label: 'Document Type', value: selectedDoc.type },
-                {
-                  label: 'Document Number',
-                  value:
-                    selectedDoc.number && selectedDoc.number !== '—'
-                      ? selectedDoc.number
-                      : selectedDoc.isDeviceCache
-                        ? 'Mobile Upload'
-                        : '—',
-                },
-                { label: 'Status', value: selectedDoc.status },
-                { label: 'Expiry Date', value: selectedDoc.expiry },
-                ...(selectedDoc.isDeviceCache
-                  ? [{ label: 'Upload Source', value: 'Mobile Camera Capture' }]
-                  : []),
-                { label: 'Driver Name', value: driver.name },
-                { label: 'Driver Phone', value: driver.phone },
-                { label: 'Vehicle', value: driver.vehicle },
-              ]
-            : []
-        }
-      />
     </>
   )
 }

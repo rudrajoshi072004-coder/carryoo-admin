@@ -12,10 +12,17 @@ export function slugStatus(status: string) {
   return status.toLowerCase().replace(/\s+/g, '-')
 }
 
+/** Keep phones, IDs, and dates as text so Excel does not turn them into 9.19E+11 or ######. */
+export function excelText(value: string | number | null | undefined): string {
+  const s = String(value ?? '').replace(/\u00a0/g, ' ').trim()
+  if (!s || s === '—') return ''
+  return `="${s.replace(/"/g, '""')}"`
+}
+
 export function exportCsv(filename: string, headers: string[], rows: (string | number)[][]) {
-  const csv = [headers, ...rows]
+  const csv = `\uFEFF${[headers, ...rows]
     .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    .join('\n')
+    .join('\r\n')}\r\n`
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

@@ -27,7 +27,7 @@ const RULES = [
 ] as const
 
 function formatWhen(value: string | null) {
-  if (!value) return '-'
+  if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
@@ -157,7 +157,7 @@ export default function Abuse() {
           <Card key={String(label)}>
             <CardBody>
               <span className="abuse-kpi__label">{label}</span>
-              <span className="abuse-kpi__value">{loading ? '-' : value}</span>
+              <span className="abuse-kpi__value">{loading ? '—' : value}</span>
             </CardBody>
           </Card>
         ))}
@@ -194,7 +194,7 @@ export default function Abuse() {
       </div>
 
       {loading ? (
-        <Card><CardBody><Skeleton variant="card" /> Loading abuse flags...</CardBody></Card>
+        <Card><CardBody><Skeleton variant="card" /> Loading abuse flags…</CardBody></Card>
       ) : error ? (
         <EmptyState
           icon={<AlertTriangle size={22} />}
@@ -274,10 +274,10 @@ export default function Abuse() {
             <p>
               <strong>Block status:</strong>{' '}
               {blockState === 'ready' && blockStatus
-                ? (blockStatus.is_blocked ? `Blocked - ${blockStatus.block_reason || 'No reason'}` : 'Not blocked')
+                ? (blockStatus.is_blocked ? `Blocked — ${blockStatus.block_reason || 'No reason'}` : 'Not blocked')
                 : blockState === 'error'
                   ? 'Unavailable'
-                  : 'Loading...'}
+                  : 'Loading…'}
             </p>
             {selected.status === 'active' ? (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

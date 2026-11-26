@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { prefetchRoute } from '../lib/prefetch'
+import { useAdminLanguage } from '../i18n/LanguageContext'
+import type { AdminNavKey } from '../i18n/catalog'
 import {
   LayoutDashboard,
   Users,
@@ -59,6 +62,30 @@ const menuItems = [
   { label: 'System Logs', path: '/system-logs', icon: ScrollText },
 ]
 
+const localizedKeys: Partial<Record<string, AdminNavKey>> = {
+  '/': 'dashboard',
+  '/drivers': 'drivers',
+  '/customers': 'customers',
+  '/abuse': 'abuse',
+  '/action-history': 'history',
+  '/orders': 'orders',
+  '/trips': 'trips',
+  '/live-tracking': 'live',
+  '/payments': 'payments',
+  '/wallet': 'wallet',
+  '/documents': 'documents',
+  '/vehicles': 'vehicles',
+  '/pricing': 'pricing',
+  '/incentives': 'incentives',
+  '/support': 'support',
+  '/analytics': 'analytics',
+  '/reports': 'reports',
+  '/notifications': 'notifications',
+  '/settings': 'settings',
+  '/admin-users': 'admins',
+  '/system-logs': 'logs',
+}
+
 interface SidebarProps {
   collapsed: boolean
   onToggle: () => void
@@ -75,6 +102,7 @@ export default function Sidebar({
   const location = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { t } = useAdminLanguage()
 
   return (
     <>
@@ -118,6 +146,7 @@ export default function Sidebar({
           <ul className="sidebar__menu">
             {menuItems.map((item) => {
               const Icon = item.icon
+              const label = localizedKeys[item.path] ? t(localizedKeys[item.path]!) : item.label
               const isActive =
                 item.path === '/'
                   ? location.pathname === '/'
@@ -130,12 +159,14 @@ export default function Sidebar({
                     end={item.path === '/'}
                     className={`sidebar__link ${isActive ? 'sidebar__link--active' : ''}`}
                     onClick={onMobileClose}
-                    title={collapsed ? item.label : undefined}
+                    onMouseEnter={() => prefetchRoute(item.path)}
+                    onFocus={() => prefetchRoute(item.path)}
+                    title={collapsed ? label : undefined}
                   >
                     <span className="sidebar__link-icon">
                       <Icon size={18} strokeWidth={1.75} />
                     </span>
-                    <span className="sidebar__link-label">{item.label}</span>
+                    <span className="sidebar__link-label">{label}</span>
                   </NavLink>
                 </li>
               )
@@ -156,14 +187,14 @@ export default function Sidebar({
           <button
             type="button"
             className="sidebar__logout"
-            title={collapsed ? 'Logout' : undefined}
+            title={collapsed ? t('logout') : undefined}
             onClick={() => {
               logout()
               navigate('/login')
             }}
           >
             <LogOut size={18} strokeWidth={1.75} />
-            <span className="sidebar__link-label">Logout</span>
+            <span className="sidebar__link-label">{t('logout')}</span>
           </button>
         </div>
       </aside>
