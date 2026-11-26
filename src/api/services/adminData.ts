@@ -1,7 +1,6 @@
-import { listBookings } from './bookings'
+import { listAllBookings, listBookings } from './bookings'
 import { listPayouts, listSupportTickets } from './ops'
 import { listPricingRules } from './pricingRules'
-import { API_BASE_URL, getStoredAccessToken } from '../client'
 import type { Booking } from '../types'
 import type { Driver, DriverStatus, DocStatus } from '../../data/driversData'
 import type { Customer } from '../../data/customersData'
@@ -28,6 +27,7 @@ import {
   savePortalSettings,
   type PortalDriverRow,
 } from './portal'
+import { NASHIK_CENTER, parseLatLng } from '../../lib/geo'
 
 const ACCENTS = ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
 
@@ -57,13 +57,13 @@ function formatWhen(iso?: string) {
   })
 }
 
-function formatDateOnly(iso?: string) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
+function formatDateOnly(iso?: string | null) {
+  if (!iso) return ''
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const day = String(parsed.getDate()).padStart(2, '0')
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${day}-${months[parsed.getMonth()]}-${parsed.getFullYear()}`
 }
 
 function formatTimeOnly(iso?: string) {
@@ -125,6 +125,24 @@ function mapPortalDriverStatus(row: PortalDriverRow): DriverStatus {
   return 'Offline'
 }
 
+function mapPortalDocument(doc: {
+  type: string
+  number: string
+  status: string
+  expiry: string
+}): Driver['documents'][number] {
+  let status: DocStatus = 'Pending'
+  if (doc.status === 'Verified') status = 'Verified'
+  else if (doc.status === 'Rejected') status = 'Rejected'
+  else if (doc.status === 'Expired') status = 'Expired'
+  return {
+    type: doc.type,
+    number: doc.number,
+    status,
+    expiry: doc.expiry,
+  }
+}
+
 function defaultDriver(
   partial: Partial<Driver> & Pick<Driver, 'id' | 'name' | 'phone'>,
 ): Driver {
@@ -132,14 +150,15 @@ function defaultDriver(
   return {
     id: partial.id,
     displayId: partial.displayId,
+    userId: partial.userId,
+    isBlocked: partial.isBlocked ?? false,
+    blockReason: partial.blockReason ?? '',
     name,
     phone: partial.phone,
     email: partial.email ?? '',
     vehicle: partial.vehicle ?? '—',
     vehicleType: partial.vehicleType ?? '—',
     city: partial.city ?? 'Nashik',
-    acceptsOutstation: partial.acceptsOutstation ?? true,
-    trainingCompleted: partial.trainingCompleted ?? false,
     rating: partial.rating ?? 4.5,
     wallet: partial.wallet ?? 0,
     status: partial.status ?? 'Offline',
@@ -176,6 +195,7 @@ function defaultDriver(
     recentTrips: partial.recentTrips ?? [],
     walletHistory: partial.walletHistory ?? [],
     recentActivity: partial.recentActivity ?? [],
+    isFavorite: partial.isFavorite ?? false,
   }
 }
 
@@ -194,6 +214,7 @@ function defaultCustomer(
     wallet: partial.wallet ?? 0,
     rating: partial.rating ?? 4.6,
     status: partial.status ?? 'Active',
+    blockReason: partial.blockReason ?? '',
     joined: partial.joined ?? '—',
     initials: partial.initials ?? initials(name),
     accent: partial.accent ?? pickAccent(partial.id),
@@ -205,17 +226,12 @@ function defaultCustomer(
     activity: partial.activity ?? [],
     walletHistory: partial.walletHistory ?? [],
     spendingByMonth: partial.spendingByMonth ?? [],
+    abuseInfo: partial.abuseInfo,
   }
 }
 
 function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
-  const joined = row.joined_at || row.registered_at
-    ? new Date(row.joined_at || row.registered_at || '').toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '—'
+  const joined = formatDateOnly(row.joined_at || row.registered_at) || '—'
   const rawPhone = row.phone || row.driver_phone || row.account_phone
   const phone = formatPhoneDisplay(rawPhone)
   const name = sanitizeDriverName(row.name, rawPhone, row.id)
@@ -229,6 +245,9 @@ function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
   return defaultDriver({
     id: row.id,
     displayId,
+    userId: row.user_id,
+    isBlocked: Boolean(row.is_blocked),
+    blockReason: row.block_reason ?? '',
     name,
     phone,
     accountPhone: formatPhoneDisplay(row.account_phone),
@@ -237,51 +256,13 @@ function portalRowToDriver(row: PortalDriverRow, tripCount = 0): Driver {
     city: row.city || 'Nashik',
     vehicleType,
     vehicle: plate !== '—' ? plate : vehicleType,
-    acceptsOutstation: row.accepts_outstation !== false,
-    trainingCompleted: row.training_completed === true,
     rating: Number.parseFloat(row.rating) || 4.5,
     status: mapPortalDriverStatus(row),
     trips,
     joined,
     wallet,
-    documents: (row.documents ?? []).map((doc) => {
-      const rawUrl = doc.file_url || doc.url
-      let resolvedUrl: string | undefined = undefined
-      if (rawUrl && typeof rawUrl === 'string') {
-        if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('data:')) {
-          resolvedUrl = rawUrl
-        } else if (rawUrl.startsWith('/api/')) {
-          const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
-          resolvedUrl = `${apiOrigin}${rawUrl}`
-        }
-      }
-      const adminToken = getStoredAccessToken() || localStorage.getItem('token') || sessionStorage.getItem('token') || ''
-      if (resolvedUrl && resolvedUrl.includes('/api/') && adminToken && !resolvedUrl.includes('token=')) {
-        const sep = resolvedUrl.includes('?') ? '&' : '?'
-        resolvedUrl = `${resolvedUrl}${sep}token=${encodeURIComponent(adminToken)}`
-      }
-      const rawNum = String(doc.number ?? '').trim()
-      const isFileUri = rawNum.startsWith('file://') || String(doc.file_key ?? '').startsWith('file://')
-      const cleanNum = isFileUri || rawNum.startsWith('drivers/') ? '—' : (rawNum || '—')
-
-      return {
-        id: doc.id ? String(doc.id) : undefined,
-        type: doc.type,
-        documentType: doc.document_type,
-        number: cleanNum,
-        status: (doc.status === 'Verified'
-          ? 'Verified'
-          : doc.status === 'Rejected'
-            ? 'Rejected'
-            : doc.status === 'Expired'
-              ? 'Expired'
-              : 'Pending') as DocStatus,
-        expiry: doc.expiry || '—',
-        url: resolvedUrl,
-        isDeviceCache: isFileUri || Boolean(doc.is_device_cache),
-        fileKey: doc.file_key,
-      }
-    }),
+    isFavorite: Boolean(row.is_favorite),
+    documents: (row.documents ?? []).map(mapPortalDocument),
     vehicleDetails: row.vehicle_details
       ? {
           ...row.vehicle_details,
@@ -428,7 +409,10 @@ function bookingToTrip(b: Booking): Trip {
     tollPhotoUrl:
       b.toll_receipt_url ||
       (b.has_toll_receipt_photo ? `/api/v1/bookings/${b.id}/parcel-photo/?kind=toll_receipt` : undefined),
-    tollCharges: Number.parseFloat(String(b.pricing_breakdown?.actual_toll_amount || b.pricing_breakdown?.toll_charges || '0')) || 0,
+    tollCharges:
+      Number.parseFloat(
+        String(b.pricing_breakdown?.actual_toll_amount || b.pricing_breakdown?.toll_charges || '0'),
+      ) || 0,
     fareWithoutToll: Number.parseFloat(String(b.pricing_breakdown?.fare_without_toll || '0')) || undefined,
   }
 }
@@ -478,21 +462,49 @@ function mergeSettings(apiRaw: Record<string, unknown> | null): PlatformSettings
   return base
 }
 
-let bookingsCache: { data: Booking[]; time: number } | null = null
+async function loadBookings() {
+  return listBookings({ page_size: 200 })
+}
 
-async function loadBookings(pageSize = 150): Promise<Booking[]> {
-  const now = Date.now()
-  if (bookingsCache && now - bookingsCache.time < 15000) {
-    return bookingsCache.data
+function last10Digits(value?: string | null): string {
+  return (value ?? '').replace(/\D/g, '').slice(-10)
+}
+
+export function bookingsForDriver(driver: Driver, bookings: Booking[]): Booking[] {
+  const phones = new Set(
+    [driver.phone, driver.driverPhone, driver.accountPhone]
+      .map(last10Digits)
+      .filter((phone) => phone.length >= 10),
+  )
+  const ids = new Set([driver.id, driver.displayId].filter(Boolean) as string[])
+
+  return bookings
+    .filter((booking) => {
+      if (booking.driver && ids.has(booking.driver)) return true
+      const summary = booking.driver_summary
+      if (summary?.driver_id && ids.has(summary.driver_id)) return true
+      const phone = last10Digits(summary?.phone || summary?.driver_phone)
+      return Boolean(phone && phones.has(phone))
+    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+}
+
+export async function fetchDriverBookingsAdmin(driver: Driver): Promise<Booking[]> {
+  const bookings = await listAllBookings()
+  return bookingsForDriver(driver, bookings)
+}
+
+export async function fetchActiveNowSummary(): Promise<{ onlineCount: number }> {
+  const portal = await fetchPortalDrivers()
+  if (!portal.denied && portal.rows.length > 0) {
+    const onlineCount = portal.rows.filter((row) => {
+      const status = mapPortalDriverStatus(row)
+      return status === 'Online' || status === 'Busy'
+    }).length
+    return { onlineCount }
   }
-  try {
-    const data = await listBookings({ page_size: pageSize })
-    bookingsCache = { data, time: now }
-    return data
-  } catch (err) {
-    if (bookingsCache) return bookingsCache.data
-    throw err
-  }
+  const locations = await fetchDriverLocations().catch(() => null)
+  return { onlineCount: locations?.length ?? 0 }
 }
 
 export async function fetchDriversAdmin(): Promise<Driver[]> {
@@ -505,7 +517,7 @@ export async function fetchDriversAdmin(): Promise<Driver[]> {
   }
 
   if (!portalResult.unavailable) {
-    return portalResult.rows.map((row) => portalRowToDriver(row, row.total_trips ?? 0))
+    return portalResult.rows.map((row) => portalRowToDriver(row, 0))
   }
 
   const bookings = await loadBookings()
@@ -522,10 +534,18 @@ export async function fetchCustomersAdmin(): Promise<Customer[]> {
         phone: row.phone,
         city: row.city || 'Nashik',
         orders: row.bookings_count,
+        status: row.is_blocked ? 'Blocked' : 'Active',
+        blockReason: row.block_reason || '',
         joined: '—',
+        abuseInfo: {
+          isFlagged: Boolean(row.is_flagged),
+          activeFlagsCount: row.abuse_flags_count ?? 0,
+          highestSeverity: row.highest_severity ?? null,
+        },
       }),
     )
   }
+
   const bookings = await loadBookings()
   return deriveCustomersFromBookings(bookings)
 }
@@ -672,79 +692,198 @@ export async function fetchWalletAdmin(): Promise<{
   return { summary, history, flowSeries, balanceSeries }
 }
 
+function isActiveNowStatus(status: LiveDriverStatus | DriverStatus): boolean {
+  return status === 'Online' || status === 'Busy'
+}
+
+function liveDriverFromParts(input: {
+  id: string
+  name: string
+  phone?: string
+  vehicle?: string
+  vehicleType?: string
+  city?: string
+  status: LiveDriverStatus
+  lat: number
+  lng: number
+  hasLocation: boolean
+  speed?: number
+  currentTrip?: string | null
+  route?: LiveDriver['route']
+  eta?: string
+}): LiveDriver {
+  const name = input.name || 'Driver'
+  return {
+    id: input.id,
+    name,
+    phone: input.phone ?? '',
+    vehicle: input.vehicle || '—',
+    vehicleType: input.vehicleType || '—',
+    city: input.city || 'Nashik',
+    status: input.status,
+    lat: input.lat,
+    lng: input.lng,
+    hasLocation: input.hasLocation,
+    speed: input.speed ?? 0,
+    battery: 0,
+    network: '4G',
+    eta: input.eta ?? '—',
+    currentTrip: input.currentTrip ?? null,
+    route: input.route ?? null,
+    initials: initials(name),
+  }
+}
+
+function bookingRoute(booking?: Booking | null): LiveDriver['route'] {
+  if (!booking) return null
+  return {
+    pickup: booking.pickup_address_text?.slice(0, 60) ?? 'Pickup',
+    drop: booking.drop_address_text?.slice(0, 60) ?? 'Drop',
+  }
+}
+
 export async function fetchLiveTrackingAdmin(): Promise<{
   drivers: LiveDriver[]
   lastUpdated: string
   activeTrips: number
   onlineCount: number
 }> {
-  const [locations, bookings] = await Promise.all([fetchDriverLocations(), loadBookings()])
-  const activeBookings = bookings.filter((b) => ACTIVE_STATES.has(b.state) && (b.driver || b.driver_summary))
+  const [locations, bookings, portal] = await Promise.all([
+    fetchDriverLocations().catch(() => null),
+    loadBookings().catch(() => [] as Booking[]),
+    fetchPortalDrivers(),
+  ])
 
-  if (locations && locations.length > 0) {
-    const drivers: LiveDriver[] = locations.map((loc, idx) => {
-      const row = loc as Record<string, unknown>
-      const name = String(row.driver_name ?? row.name ?? `Driver ${idx + 1}`)
-      const lat = Number.parseFloat(String(row.latitude ?? row.lat ?? 19.99))
-      const lng = Number.parseFloat(String(row.longitude ?? row.lng ?? 73.78))
-      const busy = ACTIVE_STATES.has(String(row.status ?? ''))
-      return {
-        id: String(row.driver_id ?? row.id ?? idx),
-        name,
-        vehicle: String(row.vehicle_number ?? '—'),
-        vehicleType: String(row.vehicle_category ?? '—'),
-        status: (busy ? 'Busy' : 'Online') as LiveDriverStatus,
-        lat,
-        lng,
-        speed: Number.parseFloat(String(row.speed_kmh ?? 0)),
-        battery: 70,
-        network: '4G',
-        eta: '—',
-        currentTrip: row.active_booking_id ? String(row.active_booking_id) : null,
-        route: null,
-        city: String(row.city ?? 'Nashik'),
-        initials: initials(name),
-        phone: String(row.phone ?? ''),
-      }
+  const activeBookings = bookings.filter((b) => ACTIVE_STATES.has(b.state) && (b.driver || b.driver_summary))
+  const bookingByDriver = new Map<string, Booking>()
+  for (const booking of activeBookings) {
+    if (booking.driver) bookingByDriver.set(String(booking.driver), booking)
+  }
+
+  const fixes = new Map<
+    string,
+    {
+      lat: number
+      lng: number
+      speed: number
+      bookingId: string | null
+      name: string
+      phone: string
+      vehicle: string
+      vehicleType: string
+      city: string
+    }
+  >()
+
+  for (const loc of locations ?? []) {
+    const row = loc as Record<string, unknown>
+    const coords = parseLatLng(row)
+    const id = String(row.driver_id ?? row.driver ?? '').trim()
+    if (!id || id === 'undefined' || !coords) continue
+    const bookingId = row.active_booking_id ?? row.booking
+    fixes.set(id, {
+      ...coords,
+      speed: Number.parseFloat(String(row.speed_kmh ?? row.speed_kmph ?? 0)) || 0,
+      bookingId: bookingId ? String(bookingId) : null,
+      name: String(row.driver_name ?? row.name ?? ''),
+      phone: String(row.phone ?? ''),
+      vehicle: String(row.vehicle_number ?? '—'),
+      vehicleType: String(row.vehicle_type ?? row.vehicle_category ?? '—'),
+      city: String(row.city ?? 'Nashik'),
     })
-    return {
-      drivers,
-      lastUpdated: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-      activeTrips: drivers.filter((d) => d.currentTrip).length,
-      onlineCount: drivers.filter((d) => d.status !== 'Offline').length,
+  }
+
+  const drivers: LiveDriver[] = []
+  const seen = new Set<string>()
+
+  if (!portal.denied) {
+    for (const row of portal.rows) {
+      const status = mapPortalDriverStatus(row)
+      if (!isActiveNowStatus(status)) continue
+      const fix = fixes.get(row.id)
+      const booking = bookingByDriver.get(row.id)
+      const mappedStatus: LiveDriverStatus = booking || fix?.bookingId ? 'Busy' : status === 'Busy' ? 'Busy' : 'Online'
+      seen.add(row.id)
+      drivers.push(
+        liveDriverFromParts({
+          id: row.id,
+          name: sanitizeDriverName(row.name, row.phone || row.driver_phone || row.account_phone, row.id),
+          phone: formatPhoneDisplay(row.phone || row.driver_phone || row.account_phone),
+          vehicle:
+            sanitizeVehicleLabel(row.vehicle_number) !== '—'
+              ? row.vehicle_number
+              : sanitizeVehicleLabel(row.vehicle_type),
+          vehicleType: sanitizeVehicleLabel(row.vehicle_type || row.vehicle_category),
+          city: row.city || 'Nashik',
+          status: mappedStatus,
+          lat: fix?.lat ?? NASHIK_CENTER.lat,
+          lng: fix?.lng ?? NASHIK_CENTER.lng,
+          hasLocation: Boolean(fix),
+          speed: fix?.speed ?? 0,
+          currentTrip:
+            booking?.id.slice(0, 8).toUpperCase() ??
+            (fix?.bookingId ? fix.bookingId.slice(0, 8).toUpperCase() : null),
+          eta: booking?.estimated_duration_min ? `${booking.estimated_duration_min} min` : '—',
+          route: bookingRoute(booking),
+        }),
+      )
     }
   }
 
-  const drivers: LiveDriver[] = activeBookings.slice(0, 30).map((b, idx) => {
-    const name = b.driver_summary?.name ?? 'Driver'
-    return {
-      id: b.driver ?? `DRV-${idx}`,
-      name,
-      vehicle: b.vehicle_category ?? '—',
-      vehicleType: b.vehicle_category ?? '—',
-      status: 'Busy',
-      lat: 19.9975 + idx * 0.002,
-      lng: 73.7898 + idx * 0.002,
-      speed: 24,
-      battery: 65 + (idx % 30),
-      network: '4G',
-      eta: b.estimated_duration_min ? `${b.estimated_duration_min} min` : '—',
-      currentTrip: b.id.slice(0, 8).toUpperCase(),
-      route: {
-        pickup: b.pickup_address_text?.slice(0, 60) ?? 'Pickup',
-        drop: b.drop_address_text?.slice(0, 60) ?? 'Drop',
-      },
-      city: 'Nashik',
-      initials: initials(name),
-      phone: b.driver_summary?.phone ?? '',
+  for (const [id, fix] of fixes) {
+    if (seen.has(id)) continue
+    const booking = bookingByDriver.get(id)
+    drivers.push(
+      liveDriverFromParts({
+        id,
+        name: sanitizeDriverName(fix.name, fix.phone, id),
+        phone: formatPhoneDisplay(fix.phone),
+        vehicle: fix.vehicle,
+        vehicleType: fix.vehicleType,
+        city: fix.city,
+        status: booking || fix.bookingId ? 'Busy' : 'Online',
+        lat: fix.lat,
+        lng: fix.lng,
+        hasLocation: true,
+        speed: fix.speed,
+        currentTrip:
+          booking?.id.slice(0, 8).toUpperCase() ??
+          (fix.bookingId ? fix.bookingId.slice(0, 8).toUpperCase() : null),
+        eta: booking?.estimated_duration_min ? `${booking.estimated_duration_min} min` : '—',
+        route: bookingRoute(booking),
+      }),
+    )
+  }
+
+  if (drivers.length === 0) {
+    for (const booking of activeBookings) {
+      const id = String(booking.driver ?? booking.id)
+      if (seen.has(id)) continue
+      seen.add(id)
+      drivers.push(
+        liveDriverFromParts({
+          id,
+          name: sanitizeDriverName(booking.driver_summary?.name, booking.driver_summary?.phone, id),
+          phone: formatPhoneDisplay(booking.driver_summary?.phone),
+          vehicle: sanitizeVehicleLabel(booking.vehicle_category),
+          vehicleType: sanitizeVehicleLabel(booking.vehicle_category),
+          status: 'Busy',
+          lat: NASHIK_CENTER.lat,
+          lng: NASHIK_CENTER.lng,
+          hasLocation: false,
+          currentTrip: booking.id.slice(0, 8).toUpperCase(),
+          eta: booking.estimated_duration_min ? `${booking.estimated_duration_min} min` : '—',
+          route: bookingRoute(booking),
+        }),
+      )
     }
-  })
+  }
 
   return {
     drivers,
     lastUpdated: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-    activeTrips: drivers.length,
-    onlineCount: drivers.length,
+    activeTrips: drivers.filter((d) => d.currentTrip).length,
+    onlineCount: drivers.filter((d) => isActiveNowStatus(d.status)).length,
   }
 }
 
@@ -780,7 +919,7 @@ export async function persistSettingsAdmin(settings: PlatformSettings): Promise<
 }
 
 export async function fetchSystemLogsAdmin(): Promise<SystemLog[]> {
-  const [portalLogs, bookings] = await Promise.all([fetchPortalAuditLogs(), loadBookings()])
+  const portalLogs = await fetchPortalAuditLogs()
 
   if (portalLogs.length > 0) {
     return portalLogs.map((log) => ({
@@ -797,6 +936,7 @@ export async function fetchSystemLogsAdmin(): Promise<SystemLog[]> {
     }))
   }
 
+  const bookings = await loadBookings()
   return bookings.slice(0, 80).map((b) => ({
     id: `LOG-${b.id.slice(0, 8)}`,
     category: 'api',
@@ -975,69 +1115,56 @@ export async function fetchIncentivesAdmin(): Promise<Incentive[]> {
 }
 
 export async function fetchDocumentsAdmin(): Promise<import('../../data/documentsData').VerificationDocument[]> {
-  const drivers = await fetchDriversAdmin()
-  const list: import('../../data/documentsData').VerificationDocument[] = []
+  const {
+    buildDocumentPreviewLabel,
+    fromPortalDocumentStatus,
+    mapDocumentType,
+  } = await import('./documentReview')
 
-  const normalizeType = (raw: string): import('../../data/documentsData').DocumentType => {
-    const s = (raw || '').toLowerCase()
-    if (s.includes('license') || s.includes('dl')) return 'DL'
-    if (s.includes('rc') || s.includes('registration')) return 'RC'
-    if (s.includes('aadhaar')) return 'Aadhaar'
-    if (s.includes('pan')) return 'PAN'
-    if (s.includes('insurance')) return 'Insurance'
-    if (s.includes('selfie') || s.includes('photo')) return 'Photo'
-    return 'DL'
+  const portal = await fetchPortalDrivers()
+  if (portal.denied) {
+    throw new Error(
+      'Admin access required. Sign in with a super_admin account to review documents.',
+    )
+  }
+  if (portal.unavailable) {
+    throw new Error('Document portal is unavailable. Check the admin portal API.')
   }
 
-  for (const d of drivers) {
-    if (d.documents && d.documents.length > 0) {
-      for (const doc of d.documents) {
-        const normType = normalizeType(doc.type)
-        const statusMap: Record<string, import('../../data/documentsData').DocumentStatus> = {
-          Verified: 'Approved',
-          Approved: 'Approved',
-          Rejected: 'Rejected',
-          Resubmitted: 'Resubmitted',
-        }
-        const docStatus = statusMap[doc.status] || 'Pending'
-        list.push({
-          id: `DOC-${d.id}-${doc.type}`,
-          driverId: d.displayId || d.id,
-          driverName: d.name,
-          type: normType,
-          status: docStatus,
-          city: d.city || 'Nashik',
-          submitted: d.joined || '—',
-          previewLabel: doc.url ? 'Preview available' : (doc.number !== '—' ? doc.number : 'Awaiting upload'),
-          fileUrl: doc.url,
-          fileType: (doc.url || '').toLowerCase().includes('.pdf') ? 'pdf' : 'image',
-          audit: [
-            {
-              action: doc.url ? 'Cloudflare R2 synced' : 'Document registered',
-              by: 'system',
-              at: formatWhen(new Date().toISOString()),
-            },
-          ],
-        })
-      }
+  const rows: import('../../data/documentsData').VerificationDocument[] = []
+  for (const driver of portal.rows) {
+    const driverName = sanitizeDriverName(driver.name, driver.phone || driver.driver_phone, driver.id)
+    const displayId = formatDriverDisplayId(driver.id, driver.display_id)
+    const submitted = formatWhen(driver.joined_at || driver.registered_at || undefined)
+    for (const doc of driver.documents ?? []) {
+      const docId = String(doc.id ?? '').trim()
+      if (!docId) continue
+      const type = mapDocumentType(doc.type, doc.document_type)
+      const status = fromPortalDocumentStatus(doc.status)
+      const previewLabel = buildDocumentPreviewLabel(type, doc.number)
+      rows.push({
+        id: docId,
+        driverId: driver.id,
+        driverDisplayId: displayId,
+        driverName,
+        type,
+        status,
+        city: driver.city || 'Nashik',
+        submitted: submitted || '—',
+        previewLabel,
+        fileUrl: doc.file_url || doc.url || null,
+        rejectionReason: doc.rejection_reason,
+        audit: [
+          {
+            action: 'Listed from portal',
+            by: 'system',
+            at: formatWhen(new Date().toISOString()),
+          },
+        ],
+      })
     }
   }
-
-  if (list.length > 0) {
-    return list
-  }
-
-  return drivers.slice(0, 20).map((d) => ({
-    id: `DOC-${d.id}`,
-    driverId: d.id,
-    driverName: d.name,
-    type: 'DL' as const,
-    status: 'Pending' as const,
-    city: d.city,
-    submitted: d.joined,
-    previewLabel: 'Awaiting upload',
-    audit: [{ action: 'Listed from API', by: 'system', at: formatWhen(new Date().toISOString()) }],
-  }))
+  return rows
 }
 
 export async function fetchAdminUsersAdmin(): Promise<import('../../data/adminUsersData').AdminUser[]> {

@@ -48,6 +48,30 @@ export interface CustomerReferral {
   recent: { name: string; date: string; status: string }[]
 }
 
+export interface CustomerAbuseInfo {
+  isFlagged: boolean
+  activeFlagsCount: number
+  highestSeverity?: 'warning' | 'high' | 'review' | null
+  flagId?: string
+  cancellations24h?: number
+  cancellations7d?: number
+  totalBookings?: number
+  customerCancellations?: number
+  driverCancellations?: number
+  completedBookings?: number
+  cancellationRate?: string
+  lastCancelledAt?: string | null
+  ruleLabel?: string
+  adminNotes?: string
+  flagStatus?: string
+  recentHistory?: Array<{
+    booking_id: string
+    cancelled_at: string | null
+    from_state: string
+    reason: string
+  }>
+}
+
 export interface Customer {
   id: string
   name: string
@@ -59,6 +83,7 @@ export interface Customer {
   wallet: number
   rating: number
   status: CustomerStatus
+  blockReason?: string
   joined: string
   initials: string
   accent: string
@@ -70,6 +95,7 @@ export interface Customer {
   activity: CustomerActivity[]
   walletHistory: { label: string; amount: number; type: 'credit' | 'debit'; time: string }[]
   spendingByMonth: { month: string; amount: number }[]
+  abuseInfo?: CustomerAbuseInfo
 }
 
 export const customerStatuses = ['All Status', 'Active', 'Inactive', 'Blocked'] as const

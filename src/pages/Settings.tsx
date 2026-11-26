@@ -25,6 +25,7 @@ import { useAsyncData } from '../hooks/useAsyncData'
 import { getApiErrorMessage } from '../api/client'
 import { fetchSettingsAdmin, persistSettingsAdmin } from '../api/services/adminData'
 import { type PlatformSettings } from '../data/settingsData'
+import { ADMIN_LOCALES, useAdminLanguage } from '../i18n/LanguageContext'
 import './Settings.css'
 
 async function fetchSettings() {
@@ -43,6 +44,7 @@ function SettingsSkeleton() {
 
 export default function Settings() {
   const { toast } = useToast()
+  const { locale, setLocale, t } = useAdminLanguage()
   const { data, loading, error, setData } = useAsyncData(fetchSettings, [])
 
   const [settings, setSettings] = useState<PlatformSettings | null>(null)
@@ -96,9 +98,9 @@ export default function Settings() {
       <Card>
         <EmptyState
           icon={<Building2 size={24} strokeWidth={1.75} />}
-          title="Unable to load settings"
+          title={t('pages.settings.loadError')}
           description={error ?? 'Could not fetch platform settings.'}
-          action={<Button variant="primary" onClick={() => window.location.reload()}>Retry</Button>}
+          action={<Button variant="primary" onClick={() => window.location.reload()}>{t('ui.retry')}</Button>}
         />
       </Card>
     )
@@ -107,9 +109,9 @@ export default function Settings() {
   return (
     <div className="settings-page cy-page">
       <PageHeader
-        title="Settings"
-        subtitle="Configure company profile, integrations, taxes, and platform preferences."
-        crumbs={[{ label: 'Platform' }, { label: 'Settings' }]}
+        title={t('pages.settings.title')}
+        subtitle={t('pages.settings.subtitle')}
+        crumbs={[{ label: t('settings') }]}
         actions={
           current.app.maintenanceMode ? (
             <StatusPill status="Maintenance" tone="warning" />
@@ -120,9 +122,27 @@ export default function Settings() {
       />
 
       <Card className="settings-section">
+        <CardHeader title={t("language")} subtitle={t('pages.settings.languageSub')} />
+        <CardBody>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {ADMIN_LOCALES.map((opt) => (
+              <Button
+                key={opt.code}
+                variant={locale === opt.code ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => setLocale(opt.code)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="settings-section">
         <CardHeader
-          title="Company profile"
-          subtitle="Legal entity and contact information"
+          title={t('pages.settings.company')}
+          subtitle={t('pages.settings.companySub')}
           action={
             <Button variant="primary" size="sm" onClick={() => saveSection('Company')}>
               <Save size={14} strokeWidth={1.75} /> Save
@@ -186,8 +206,8 @@ export default function Settings() {
 
       <Card className="settings-section">
         <CardHeader
-          title="Branding"
-          subtitle="Brand colors and visual identity"
+          title={t('pages.settings.branding')}
+          subtitle={t('pages.settings.brandingSub')}
           action={
             <Button variant="primary" size="sm" onClick={() => saveSection('Branding')}>
               <Palette size={14} strokeWidth={1.75} /> Save
@@ -223,8 +243,8 @@ export default function Settings() {
 
       <Card className="settings-section">
         <CardHeader
-          title="Taxes"
-          subtitle="GST, TDS, and invoicing configuration"
+          title={t('pages.settings.taxes')}
+          subtitle={t('pages.settings.taxesSub')}
           action={
             <Button variant="primary" size="sm" onClick={() => saveSection('Taxes')}>
               <Receipt size={14} strokeWidth={1.75} /> Save
@@ -285,7 +305,7 @@ export default function Settings() {
       </Card>
 
       <Card className="settings-section">
-        <CardHeader title="Integrations" subtitle="Payment, maps, Firebase, email, and SMS" />
+        <CardHeader title={t('pages.settings.integrations')} subtitle={t('pages.settings.integrationsSub')} />
         <CardBody>
           <div className="settings-integration-grid">
             <div className="settings-integration">
@@ -380,8 +400,8 @@ export default function Settings() {
 
       <Card className="settings-section">
         <CardHeader
-          title="Legal"
-          subtitle="Privacy policy, terms, and refund policy"
+          title={t('pages.settings.legal')}
+          subtitle={t('pages.settings.legalSub')}
           action={
             <Button variant="primary" size="sm" onClick={() => saveSection('Legal')}>
               <Scale size={14} strokeWidth={1.75} /> Save
@@ -417,8 +437,8 @@ export default function Settings() {
 
       <Card className="settings-section settings-section--app">
         <CardHeader
-          title="App"
-          subtitle="Version control and maintenance mode"
+          title={t('pages.settings.app')}
+          subtitle={t('pages.settings.appSub')}
           action={
             <Button variant="primary" size="sm" onClick={() => saveSection('App')}>
               <Smartphone size={14} strokeWidth={1.75} /> Save

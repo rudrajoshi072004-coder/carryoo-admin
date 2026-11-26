@@ -3,6 +3,7 @@ import {
   AreaChart,
   ResponsiveContainer,
 } from 'recharts'
+import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 
 interface KpiCardProps {
@@ -12,6 +13,8 @@ interface KpiCardProps {
   icon: LucideIcon
   sparkline: number[]
   accent?: string
+  href?: string
+  live?: boolean
 }
 
 export default function KpiCard({
@@ -21,13 +24,15 @@ export default function KpiCard({
   icon: Icon,
   sparkline,
   accent = '#2563eb',
+  href,
+  live,
 }: KpiCardProps) {
   const isPositive = growth >= 0
   const chartData = sparkline.map((v, i) => ({ i, v }))
   const gradientId = `kpi-${title.replace(/[^a-zA-Z0-9]/g, '')}`
 
-  return (
-    <article className="kpi-card cy-card cy-card--interactive">
+  const content = (
+    <>
       <div className="kpi-card__top">
         <div
           className="kpi-card__icon"
@@ -35,12 +40,16 @@ export default function KpiCard({
         >
           <Icon size={18} strokeWidth={1.75} />
         </div>
-        <span
-          className={`kpi-card__growth ${isPositive ? 'kpi-card__growth--up' : 'kpi-card__growth--down'}`}
-        >
-          {isPositive ? '+' : ''}
-          {growth.toFixed(1)}%
-        </span>
+        {live ? (
+          <span className="kpi-card__growth kpi-card__growth--live">Live</span>
+        ) : (
+          <span
+            className={`kpi-card__growth ${isPositive ? 'kpi-card__growth--up' : 'kpi-card__growth--down'}`}
+          >
+            {isPositive ? '+' : ''}
+            {growth.toFixed(1)}%
+          </span>
+        )}
       </div>
 
       <div className="kpi-card__body">
@@ -69,6 +78,20 @@ export default function KpiCard({
           </AreaChart>
         </ResponsiveContainer>
       </div>
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link to={href} className="kpi-card kpi-card--link cy-card cy-card--interactive">
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <article className="kpi-card cy-card cy-card--interactive">
+      {content}
     </article>
   )
 }

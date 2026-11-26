@@ -13,14 +13,17 @@ export interface VerificationDocument {
   id: string
   driverName: string
   driverId: string
+  /** Human-readable driver code when available (e.g. DRV-ABC123). */
+  driverDisplayId?: string
   type: DocumentType
   status: DocumentStatus
   city: string
   submitted: string
   previewLabel: string
-  audit: AuditEntry[]
-  fileUrl?: string
+  fileUrl?: string | null
   fileType?: 'image' | 'pdf' | 'unknown'
+  rejectionReason?: string
+  audit: AuditEntry[]
 }
 
 export const documentStatuses: DocumentStatus[] = [
@@ -62,7 +65,6 @@ export const verificationDocuments: VerificationDocument[] = [
     city: 'Mumbai',
     submitted: '14 Jul 2026, 09:12',
     previewLabel: 'Driving Licence · MH-14-2024-0018234',
-    fileUrl: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?auto=format&fit=crop&w=1200&q=80',
     audit: [
       { action: 'Submitted', by: 'Driver app', at: '14 Jul 2026, 09:12' },
       { action: 'Queued for review', by: 'System', at: '14 Jul 2026, 09:13' },
@@ -77,7 +79,6 @@ export const verificationDocuments: VerificationDocument[] = [
     city: 'Bengaluru',
     submitted: '14 Jul 2026, 08:45',
     previewLabel: 'Registration Certificate · KA-03-ME-4821',
-    fileUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1200&q=80',
     audit: [
       { action: 'Submitted', by: 'Driver app', at: '14 Jul 2026, 08:45' },
     ],
@@ -91,7 +92,6 @@ export const verificationDocuments: VerificationDocument[] = [
     city: 'Delhi NCR',
     submitted: '13 Jul 2026, 18:30',
     previewLabel: 'Vehicle Insurance · Policy #ICICI-7829341',
-    fileUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&w=1200&q=80',
     audit: [
       { action: 'Submitted', by: 'Driver app', at: '13 Jul 2026, 18:30' },
       { action: 'OCR parsed', by: 'System', at: '13 Jul 2026, 18:31' },
@@ -106,7 +106,6 @@ export const verificationDocuments: VerificationDocument[] = [
     city: 'Pune',
     submitted: '13 Jul 2026, 14:20',
     previewLabel: 'Aadhaar Card · XXXX-XXXX-4821',
-    fileUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80',
     audit: [
       { action: 'Submitted', by: 'Driver app', at: '12 Jul 2026, 11:00' },
       { action: 'Rejected', by: 'Neha Kapoor', at: '12 Jul 2026, 16:45', note: 'Image blurry — please re-upload full card' },
@@ -122,7 +121,6 @@ export const verificationDocuments: VerificationDocument[] = [
     city: 'Hyderabad',
     submitted: '13 Jul 2026, 11:55',
     previewLabel: 'PAN Card · ABCDE1234F',
-    fileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=1200&q=80',
     audit: [
       { action: 'Submitted', by: 'Driver app', at: '13 Jul 2026, 11:55' },
     ],

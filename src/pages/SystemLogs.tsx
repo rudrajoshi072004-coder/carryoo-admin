@@ -8,6 +8,7 @@ import {
 import { SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -53,6 +54,7 @@ function SystemLogsSkeleton() {
 }
 
 export default function SystemLogs() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data: logs, loading, error } = useAsyncData(fetchLogs, [])
 
@@ -129,8 +131,8 @@ export default function SystemLogs() {
   return (
     <div className="system-logs-page cy-page">
       <PageHeader
-        title="System Logs"
-        subtitle="Audit trails, login history, API events, and server diagnostics."
+        title={t('pages.logs.title')}
+        subtitle={t('pages.logs.subtitle')}
         crumbs={[{ label: 'Platform' }, { label: 'System Logs' }]}
         actions={
           <Button variant="secondary" onClick={handleExport}>

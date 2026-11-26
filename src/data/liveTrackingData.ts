@@ -16,6 +16,7 @@ export interface LiveDriver {
   status: LiveDriverStatus
   lat: number
   lng: number
+  hasLocation?: boolean
   speed: number
   battery: number
   network: NetworkSignal
@@ -46,14 +47,7 @@ export const liveTrackingStatuses: Array<'All Status' | LiveDriverStatus> = [
   'Offline',
 ]
 
-export const liveTrackingVehicles = [
-  'All Vehicles',
-  'Bike',
-  'Auto',
-  'Pickup',
-  'Mini Truck',
-  'Tempo',
-]
+export { CUSTOMER_APP_VEHICLE_FILTERS as liveTrackingVehicles } from '../lib/customerVehicles'
 
 export const liveDrivers: LiveDriver[] = [
   {

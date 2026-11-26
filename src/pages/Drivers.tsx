@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Plus,
   Download,
@@ -19,11 +19,15 @@ import {
   Skeleton,
   StatusPill,
 } from '../components/ui'
+import { matchesCustomerVehicleFilter, type CustomerAppVehicleFilter } from '../lib/customerVehicles'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { fetchDriversAdmin } from '../api/services/adminData'
 import { createPortalDriver, updatePortalDriver } from '../api/services/portal'
 import { getApiErrorMessage } from '../api/client'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
+import { excelText, exportCsv } from '../lib/utils'
+import { invalidateCache } from '../lib/queryCache'
 import {
   driverCities,
   driverStatuses,
@@ -61,12 +65,13 @@ function DriversSkeleton() {
 }
 
 export default function Drivers() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
   const { data: drivers, loading, error, refetch } = useAsyncData(fetchDrivers, [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<(typeof driverStatuses)[number]>('All Status')
   const [cityFilter, setCityFilter] = useState(driverCities[0])
-  const [vehicleFilter, setVehicleFilter] = useState(vehicleTypes[0])
+  const [vehicleFilter, setVehicleFilter] = useState<CustomerAppVehicleFilter>(vehicleTypes[0])
   const [selected, setSelected] = useState<Driver | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -86,8 +91,7 @@ export default function Drivers() {
         statusFilter === 'All Status' || driver.status === statusFilter
       const matchesCity =
         cityFilter === 'All Cities' || driver.city === cityFilter
-      const matchesVehicle =
-        vehicleFilter === 'All Vehicles' || driver.vehicleType === vehicleFilter
+      const matchesVehicle = matchesCustomerVehicleFilter(driver.vehicleType, vehicleFilter)
 
       return matchesSearch && matchesStatus && matchesCity && matchesVehicle
     })
@@ -99,11 +103,66 @@ export default function Drivers() {
   }
 
   const [approvingId, setApprovingId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [favoritingId, setFavoritingId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [addPhone, setAddPhone] = useState('')
   const [addPassword, setAddPassword] = useState('')
   const [addConfirmPassword, setAddConfirmPassword] = useState('')
   const [adding, setAdding] = useState(false)
+
+  useEffect(() => {
+    if (!menuOpenId) return
+    const onDocClick = () => setMenuOpenId(null)
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
+  }, [menuOpenId])
+
+  const approveDriverKyc = async (driver: Driver) => {
+    setApprovingId(driver.id)
+    try {
+      await updatePortalDriver(driver.id, { kyc_status: 'approved' })
+      toast({
+        title: 'KYC approved',
+        description: `${driver.name} can now receive delivery requests.`,
+      })
+      refetch()
+    } catch (err) {
+      toast({
+        title: 'Could not approve KYC',
+        description: err instanceof Error ? err.message : 'Deploy admin portal PATCH endpoint first.',
+        tone: 'error',
+      })
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
+  const toggleFavorite = async (driver: Driver) => {
+    const next = !driver.isFavorite
+    setFavoritingId(driver.id)
+    setMenuOpenId(null)
+    try {
+      await updatePortalDriver(driver.id, { is_favorite: next })
+      invalidateCache('GET:/admin/portal/drivers')
+      toast({
+        title: next ? 'Added as favorite driver' : 'Removed from favorites',
+        description: next
+          ? `${driver.name} gets the first 10 seconds when they are near a customer pickup.`
+          : `${driver.name} will be offered trips with everyone else.`,
+      })
+      refetch()
+    } catch (err) {
+      toast({
+        title: 'Could not update favorite',
+        description: err instanceof Error ? err.message : 'Deploy the favorite-driver backend change first.',
+        tone: 'error',
+      })
+    } finally {
+      setFavoritingId(null)
+    }
+  }
 
   const openAddDriver = () => {
     setAddPhone('')
@@ -130,6 +189,7 @@ export default function Drivers() {
     setAdding(true)
     try {
       const created = await createPortalDriver({ phone, password })
+      invalidateCache('GET:/admin/portal/drivers')
       setAddOpen(false)
       toast({
         title: 'Driver added',
@@ -147,43 +207,62 @@ export default function Drivers() {
     }
   }
 
-  const approveDriverKyc = async (driver: Driver) => {
-    setApprovingId(driver.id)
+  const handleExport = async () => {
+    setExporting(true)
     try {
-      await updatePortalDriver(driver.id, { kyc_status: 'approved' })
+      invalidateCache('GET:/admin/portal/drivers')
+      const latest = await fetchDriversAdmin()
+      const rows = latest.map((d) => [
+        excelText(d.displayId ?? d.id),
+        d.name,
+        excelText(d.phone),
+        d.email || '',
+        d.vehicleType,
+        excelText(d.vehicleDetails.plate !== '—' ? d.vehicleDetails.plate : d.vehicle),
+        d.city,
+        d.rating,
+        d.wallet,
+        d.todayEarnings,
+        d.status,
+        d.trips,
+        d.acceptanceRate,
+        d.cancellationRate,
+        excelText(d.joined),
+      ])
+      exportCsv(
+        'carryoo-drivers.csv',
+        [
+          'Driver ID',
+          'Name',
+          'Phone',
+          'Email',
+          'Vehicle type',
+          'Vehicle number',
+          'City',
+          'Rating',
+          'Wallet',
+          "Today's earnings",
+          'Status',
+          'Trips',
+          'Acceptance %',
+          'Cancellation %',
+          'Joined',
+        ],
+        rows,
+      )
       toast({
-        title: 'KYC approved',
-        description: `${driver.name} can now receive delivery requests.`,
+        title: 'Drivers exported',
+        description: `${latest.length} drivers downloaded from backend, including joining date.`,
       })
-      refetch()
     } catch (err) {
       toast({
-        title: 'Could not approve KYC',
-        description: err instanceof Error ? err.message : 'Deploy admin portal PATCH endpoint first.',
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : 'Could not fetch drivers from backend.',
         tone: 'error',
       })
     } finally {
-      setApprovingId(null)
+      setExporting(false)
     }
-  }
-
-  const handleExport = () => {
-    const headers = [
-      'Driver ID', 'Name', 'Phone', 'Vehicle', 'City', 'Rating', 'Wallet', 'Status', 'Trips', 'Joined',
-    ]
-    const rows = filtered.map((d) => [
-      d.id, d.name, d.phone, d.vehicle, d.city, d.rating, d.wallet, d.status, d.trips, d.joined,
-    ])
-    const csv = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'carryoo-drivers.csv'
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   if (loading) return <DriversSkeleton />
@@ -208,16 +287,16 @@ export default function Drivers() {
   return (
     <div className="drivers-page cy-page">
       <PageHeader
-        title="Drivers"
-        subtitle="Manage fleet partners, documents, earnings, and live availability."
-        crumbs={[{ label: 'Home', to: '/' }, { label: 'Drivers' }]}
+        title={t('pages.drivers.title')}
+        subtitle={t('pages.drivers.subtitle')}
+        crumbs={[{ label: t('ui.home'), to: '/' }, { label: t('drivers') }]}
       />
       <div className="cy-page__toolbar">
         <div className="cy-page__toolbar-left">
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Search by name, ID, phone, city…"
+            placeholder={t('pages.drivers.search')}
             className="drivers-search"
             aria-label="Search drivers"
           />
@@ -251,7 +330,7 @@ export default function Drivers() {
             <select
               className="cy-select"
               value={vehicleFilter}
-              onChange={(e) => setVehicleFilter(e.target.value)}
+              onChange={(e) => setVehicleFilter(e.target.value as CustomerAppVehicleFilter)}
               aria-label="Filter by vehicle"
             >
               {vehicleTypes.map((type) => (
@@ -266,9 +345,9 @@ export default function Drivers() {
             <RefreshCw size={16} strokeWidth={1.75} />
             Refresh
           </Button>
-          <Button variant="secondary" onClick={handleExport}>
+          <Button variant="secondary" onClick={handleExport} disabled={exporting}>
             <Download size={16} strokeWidth={1.75} />
-            Export
+            {exporting ? 'Exporting…' : 'Export'}
           </Button>
           <Button variant="primary" onClick={openAddDriver}>
             <Plus size={16} strokeWidth={1.75} />
@@ -351,7 +430,15 @@ export default function Drivers() {
                           {driver.initials}
                         </div>
                         <div>
-                          <div className="cy-table__primary">{driver.name}</div>
+                          <div className="cy-table__primary driver-cell__name">
+                            {driver.name}
+                            {driver.isFavorite ? (
+                              <span className="driver-favorite-badge" title="Favorite driver">
+                                <Star size={11} strokeWidth={1.75} fill="#f59e0b" color="#f59e0b" />
+                                Favorite
+                              </span>
+                            ) : null}
+                          </div>
                           <div className="cy-table__secondary">{driver.gender}</div>
                         </div>
                       </div>
@@ -377,6 +464,7 @@ export default function Drivers() {
                     </td>
                     <td>
                       <StatusPill status={driver.status} tone={driver.status as DriverStatus} />
+                      {driver.isBlocked ? <StatusPill status="Blocked" tone="cancelled" /> : null}
                     </td>
                     <td className="cy-table__mono">{driver.trips.toLocaleString('en-IN')}</td>
                     <td className="cy-table__mono">{driver.acceptanceRate}%</td>
@@ -403,14 +491,46 @@ export default function Drivers() {
                             Approve KYC
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          className="cy-action-btn"
-                          title="More actions"
-                          aria-label={`More actions for ${driver.name}`}
-                        >
-                          <MoreHorizontal size={15} strokeWidth={1.75} />
-                        </button>
+                        <div className="drivers-more">
+                          <button
+                            type="button"
+                            className="cy-action-btn"
+                            title="More actions"
+                            aria-label={`More actions for ${driver.name}`}
+                            aria-expanded={menuOpenId === driver.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setMenuOpenId((current) => (current === driver.id ? null : driver.id))
+                            }}
+                          >
+                            <MoreHorizontal size={15} strokeWidth={1.75} />
+                          </button>
+                          {menuOpenId === driver.id ? (
+                            <div className="drivers-more__menu" role="menu">
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={favoritingId === driver.id}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleFavorite(driver)
+                                }}
+                              >
+                                <Star
+                                  size={14}
+                                  strokeWidth={1.75}
+                                  fill={driver.isFavorite ? '#f59e0b' : 'none'}
+                                  color="#f59e0b"
+                                />
+                                {favoritingId === driver.id
+                                  ? 'Saving…'
+                                  : driver.isFavorite
+                                    ? 'Remove from favorites'
+                                    : 'Add as favorite driver'}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                   </tr>

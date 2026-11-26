@@ -13,6 +13,7 @@ import DocumentPreviewModal from '../components/DocumentPreviewModal'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   EmptyState,
@@ -22,10 +23,16 @@ import {
 } from '../components/ui'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { exportCsv, paginate } from '../lib/utils'
+import { getStoredUser } from '../api/client'
 import { fetchDocumentsAdmin } from '../api/services/adminData'
+import { reviewPortalDocument } from '../api/services/portal'
+import {
+  fromPortalDocumentStatus,
+  requireRejectionReason,
+  toPortalReviewStatus,
+} from '../api/services/documentReview'
 import {
   documentStatuses,
-  documentCities,
   type VerificationDocument,
   type DocumentStatus,
 } from '../data/documentsData'
@@ -45,6 +52,15 @@ function nowLabel() {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date())
+}
+
+function reviewerLabel() {
+  const user = getStoredUser()
+  const name = user?.name?.trim()
+  const phone = user?.phone?.trim()
+  if (name) return name
+  if (phone) return phone
+  return 'Admin'
 }
 
 function DocumentsSkeleton() {
@@ -67,16 +83,30 @@ function DocumentsSkeleton() {
 }
 
 export default function Documents() {
-  const { data: documents, loading, error, setData } = useAsyncData(fetchDocuments, [])
+  const { t } = useAdminLanguage()
+  const { data: documents, loading, error, setData, refetch } = useAsyncData(
+    fetchDocuments,
+    [],
+    { cacheKey: 'view:/documents:fetchDocuments' },
+  )
   const { toast } = useToast()
   const [statusTab, setStatusTab] = useState<DocumentStatus>('Pending')
   const [search, setSearch] = useState('')
-  const [cityFilter, setCityFilter] = useState(documentCities[0])
+  const [cityFilter, setCityFilter] = useState('All Cities')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<VerificationDocument | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [mutating, setMutating] = useState(false)
+
+  const cityOptions = useMemo(() => {
+    const cities = new Set<string>(['All Cities'])
+    for (const doc of documents ?? []) {
+      if (doc.city?.trim()) cities.add(doc.city.trim())
+    }
+    return [...cities]
+  }, [documents])
 
   const filtered = useMemo(() => {
     if (!documents) return []
@@ -87,6 +117,7 @@ export default function Documents() {
         !q ||
         doc.driverName.toLowerCase().includes(q) ||
         doc.driverId.toLowerCase().includes(q) ||
+        (doc.driverDisplayId ?? '').toLowerCase().includes(q) ||
         doc.id.toLowerCase().includes(q) ||
         doc.type.toLowerCase().includes(q) ||
         doc.previewLabel.toLowerCase().includes(q)
@@ -116,64 +147,92 @@ export default function Documents() {
     setPanelOpen(true)
   }
 
-  const updateDocument = (id: string, patch: Partial<VerificationDocument>) => {
-    setData((prev) =>
-      prev?.map((d) => (d.id === id ? { ...d, ...patch } : d)) ?? null,
-    )
-    setSelected((prev) => (prev?.id === id ? { ...prev, ...patch } : prev))
+  const applyServerResult = (
+    doc: VerificationDocument,
+    result: { status: string; rejection_reason?: string },
+    action: 'Approved' | 'Rejected',
+    reason?: string,
+  ) => {
+    const nextStatus = fromPortalDocumentStatus(result.status)
+    const auditEntry = {
+      action,
+      by: reviewerLabel(),
+      at: nowLabel(),
+      note: reason || result.rejection_reason || undefined,
+    }
+    const patch: Partial<VerificationDocument> = {
+      status: nextStatus,
+      rejectionReason: result.rejection_reason || reason,
+      audit: [...doc.audit, auditEntry],
+    }
+    setData((prev) => prev?.map((d) => (d.id === doc.id ? { ...d, ...patch } : d)) ?? null)
+    setSelected((prev) => (prev?.id === doc.id ? { ...prev, ...patch } : prev))
+  }
+
+  const runReview = async (
+    doc: VerificationDocument,
+    uiAction: 'Approved' | 'Rejected',
+    reason?: string,
+  ) => {
+    if (mutating) return
+    const status = toPortalReviewStatus(uiAction)
+    const reasonError = requireRejectionReason(status, reason)
+    if (reasonError) {
+      toast({ title: 'Rejection reason required', description: reasonError, tone: 'warning' })
+      return
+    }
+
+    setMutating(true)
+    try {
+      const result = await reviewPortalDocument(doc.driverId, doc.id, {
+        status,
+        ...(status === 'rejected' ? { rejection_reason: reason!.trim() } : {}),
+      })
+      applyServerResult(doc, result, uiAction, reason)
+      toast({
+        title: uiAction === 'Approved' ? 'Document approved' : 'Document rejected',
+        description:
+          uiAction === 'Approved'
+            ? `${doc.type} for ${doc.driverName} was verified on the server.`
+            : `${doc.type} for ${doc.driverName} was rejected on the server.`,
+        tone: uiAction === 'Approved' ? 'success' : 'warning',
+      })
+      setPanelOpen(false)
+      // Refresh from portal so sibling docs / KYC side-effects stay accurate.
+      refetch()
+    } catch (err) {
+      toast({
+        title: uiAction === 'Approved' ? 'Could not approve document' : 'Could not reject document',
+        description: err instanceof Error ? err.message : 'Request failed',
+        tone: 'error',
+      })
+    } finally {
+      setMutating(false)
+    }
   }
 
   const handleApprove = (doc: VerificationDocument) => {
-    const auditEntry = {
-      action: 'Approved',
-      by: 'Aarav Mehta',
-      at: nowLabel(),
-    }
-    updateDocument(doc.id, {
-      status: 'Approved',
-      audit: [...doc.audit, auditEntry],
-    })
-    toast({
-      title: 'Document approved',
-      description: `${doc.type} for ${doc.driverName} has been verified.`,
-      tone: 'success',
-    })
-    setPanelOpen(false)
+    void runReview(doc, 'Approved')
   }
 
   const handleReject = (reason?: string) => {
-    if (!selected || !reason) return
-    const auditEntry = {
-      action: 'Rejected',
-      by: 'Aarav Mehta',
-      at: nowLabel(),
-      note: reason,
-    }
-    updateDocument(selected.id, {
-      status: 'Rejected',
-      audit: [...selected.audit, auditEntry],
-    })
-    toast({
-      title: 'Document rejected',
-      description: `${selected.type} for ${selected.driverName} was rejected.`,
-      tone: 'warning',
-    })
-    setPanelOpen(false)
+    if (!selected) return
+    void runReview(selected, 'Rejected', reason)
   }
 
   const handleExport = () => {
     exportCsv(
       'carryoo-documents.csv',
       ['Document ID', 'Driver', 'Driver ID', 'Type', 'Status', 'City', 'Submitted', 'Preview'],
-      filtered.map((d) => [
-        d.id,
-        d.driverName,
-        d.driverId,
-        d.type,
-        d.status,
-        d.city,
-        d.submitted,
-        d.previewLabel,
+      filtered.map((doc) => [
+        doc.id,
+        doc.driverName,
+        doc.driverDisplayId || doc.driverId,
+        doc.type,
+        doc.status,
+        doc.city,
+        doc.submitted,
+        doc.previewLabel,
       ]),
     )
   }
@@ -188,7 +247,7 @@ export default function Documents() {
           title="Unable to load documents"
           description={error ?? 'Could not fetch verification queue.'}
           action={
-            <Button variant="primary" onClick={() => window.location.reload()}>
+            <Button variant="primary" onClick={() => refetch()}>
               Retry
             </Button>
           }
@@ -200,8 +259,8 @@ export default function Documents() {
   return (
     <div className="documents-page cy-page">
       <PageHeader
-        title="Document Verification"
-        subtitle="Review and approve driver KYC documents across India."
+        title={t('pages.documents.title')}
+        subtitle={t('pages.documents.subtitle')}
         crumbs={[
           { label: 'Dashboard', to: '/' },
           { label: 'Documents' },
@@ -258,7 +317,7 @@ export default function Documents() {
               }}
               aria-label="Filter by city"
             >
-              {documentCities.map((city) => (
+              {cityOptions.map((city) => (
                 <option key={city} value={city}>{city}</option>
               ))}
             </select>
@@ -323,7 +382,9 @@ export default function Documents() {
                       <td className="cy-table__mono cy-table__link">{doc.id}</td>
                       <td>
                         <div className="cy-table__primary">{doc.driverName}</div>
-                        <div className="cy-table__secondary">{doc.driverId}</div>
+                        <div className="cy-table__secondary">
+                          {doc.driverDisplayId || doc.driverId}
+                        </div>
                       </td>
                       <td>
                         <span className="documents-type-pill">{doc.type}</span>
@@ -365,7 +426,10 @@ export default function Documents() {
       <SidePanel
         open={panelOpen}
         title={selected ? `${selected.type} · ${selected.driverName}` : 'Document'}
-        onClose={() => setPanelOpen(false)}
+        onClose={() => {
+          if (mutating) return
+          setPanelOpen(false)
+        }}
         width={520}
       >
         {selected ? (
@@ -375,25 +439,19 @@ export default function Documents() {
               onClick={() => setPreviewModalOpen(true)}
               role="button"
               tabIndex={0}
-              title="Click to inspect document full screen"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
+              title="Open document inspector"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
                   setPreviewModalOpen(true)
                 }
               }}
             >
               {selected.fileUrl ? (
-                <div className="documents-preview__image-box">
-                  <img
-                    src={selected.fileUrl}
-                    alt={`${selected.type} preview`}
-                    className="documents-preview__img"
-                  />
-                  <div className="documents-preview__hover-overlay">
-                    <Maximize2 size={18} />
-                    <span>Click to zoom & inspect</span>
-                  </div>
+                <div className="documents-preview__placeholder">
+                  <Maximize2 size={32} strokeWidth={1.75} />
+                  <span>{selected.previewLabel}</span>
+                  <small>Click to inspect document</small>
                 </div>
               ) : (
                 <div className="documents-preview__placeholder">
@@ -408,7 +466,9 @@ export default function Documents() {
               <div>
                 <span className="documents-panel-meta__label">Driver</span>
                 <strong>{selected.driverName}</strong>
-                <span className="cy-table__secondary">{selected.driverId}</span>
+                <span className="cy-table__secondary">
+                  {selected.driverDisplayId || selected.driverId}
+                </span>
               </div>
               <div>
                 <span className="documents-panel-meta__label">City</span>
@@ -424,15 +484,24 @@ export default function Documents() {
               </div>
             </div>
 
+            {selected.rejectionReason ? (
+              <p className="documents-audit__note">Rejection reason: {selected.rejectionReason}</p>
+            ) : null}
+
             {(selected.status === 'Pending' || selected.status === 'Resubmitted') && (
               <div className="documents-panel-actions">
-                <Button variant="primary" onClick={() => handleApprove(selected)}>
+                <Button
+                  variant="primary"
+                  disabled={mutating}
+                  onClick={() => handleApprove(selected)}
+                >
                   <CheckCircle2 size={16} strokeWidth={1.75} />
-                  Approve
+                  {mutating ? 'Saving…' : 'Approve'}
                 </Button>
                 <Button
                   variant="secondary"
                   className="documents-reject-btn"
+                  disabled={mutating}
                   onClick={() => setRejectOpen(true)}
                 >
                   <XCircle size={16} strokeWidth={1.75} />
@@ -474,48 +543,39 @@ export default function Documents() {
         reasonLabel="Rejection reason"
         reasonPlaceholder="e.g. Image blurry, document expired…"
         onConfirm={handleReject}
-        onClose={() => setRejectOpen(false)}
+        onClose={() => {
+          if (mutating) return
+          setRejectOpen(false)
+        }}
       />
 
       <DocumentPreviewModal
         open={previewModalOpen}
         onClose={() => setPreviewModalOpen(false)}
         title={selected ? `${selected.type} · ${selected.driverName}` : 'Document Preview'}
-        subtitle={
-          selected ? `Driver ID: ${selected.driverId} · Submitted: ${selected.submitted}` : undefined
-        }
+        subtitle={selected ? `Driver ID: ${selected.driverId} · Submitted: ${selected.submitted}` : undefined}
         fileUrl={selected?.fileUrl}
         fileType={selected?.fileType}
         status={selected?.status}
-        metadata={
-          selected
-            ? [
-                { label: 'Document ID', value: selected.id },
-                { label: 'Document Type', value: selected.type },
-                { label: 'Driver Name', value: selected.driverName },
-                { label: 'Driver ID', value: selected.driverId },
-                { label: 'City', value: selected.city },
-                { label: 'Submitted Date', value: selected.submitted },
-                { label: 'Status', value: selected.status },
-              ]
-            : []
-        }
-        onApprove={
-          selected && (selected.status === 'Pending' || selected.status === 'Resubmitted')
-            ? () => {
-                handleApprove(selected)
-                setPreviewModalOpen(false)
-              }
-            : undefined
-        }
-        onReject={
-          selected && (selected.status === 'Pending' || selected.status === 'Resubmitted')
-            ? () => {
-                setPreviewModalOpen(false)
-                setRejectOpen(true)
-              }
-            : undefined
-        }
+        metadata={selected ? [
+          { label: 'Document ID', value: selected.id },
+          { label: 'Document Type', value: selected.type },
+          { label: 'Driver Name', value: selected.driverName },
+          { label: 'Driver ID', value: selected.driverId },
+          { label: 'City', value: selected.city },
+          { label: 'Submitted Date', value: selected.submitted },
+          { label: 'Status', value: selected.status },
+        ] : []}
+        approving={mutating}
+        rejecting={mutating}
+        onApprove={selected && (selected.status === 'Pending' || selected.status === 'Resubmitted') ? () => {
+          handleApprove(selected)
+          setPreviewModalOpen(false)
+        } : undefined}
+        onReject={selected && (selected.status === 'Pending' || selected.status === 'Resubmitted') ? () => {
+          setPreviewModalOpen(false)
+          setRejectOpen(true)
+        } : undefined}
       />
     </div>
   )

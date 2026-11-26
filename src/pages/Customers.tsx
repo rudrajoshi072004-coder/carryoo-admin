@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Plus,
   Download,
@@ -17,10 +17,16 @@ import {
   ThumbsUp,
   Activity,
   IndianRupee,
+  AlertTriangle,
+  ShieldAlert,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
 } from 'lucide-react'
-import { SidePanel } from '../components/ConfirmDialog'
+import { ConfirmDialog, SidePanel } from '../components/ConfirmDialog'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import {
   Button,
   Card,
@@ -30,9 +36,15 @@ import {
   Skeleton,
   StatusPill,
 } from '../components/ui'
+import { UserBlockPanel } from '../components/UserBlockPanel'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatINR, exportCsv, paginate, slugStatus } from '../lib/utils'
 import { fetchCustomersAdmin } from '../api/services/adminData'
+import {
+  fetchPortalFlaggedCustomers,
+  reviewPortalFlaggedCustomer,
+  type FlaggedCustomerRow,
+} from '../api/services/portal'
 import {
   customerCities,
   customerStatuses,
@@ -47,6 +59,12 @@ const statusTone: Record<CustomerStatus, string> = {
   Active: 'completed',
   Inactive: 'offline',
   Blocked: 'cancelled',
+}
+
+const severityTone: Record<'warning' | 'high' | 'review', string> = {
+  warning: 'warning',
+  high: 'danger',
+  review: 'review',
 }
 
 async function fetchCustomers() {
@@ -73,8 +91,17 @@ function CustomersSkeleton() {
   )
 }
 
-function CustomerPanel({ customer }: { customer: Customer }) {
+function CustomerPanel({
+  customer,
+  onFlagAction,
+  onBlockChanged,
+}: {
+  customer: Customer
+  onFlagAction?: (flagId: string, action: 'review' | 'dismiss') => void
+  onBlockChanged?: (blocked: boolean, reason: string) => void
+}) {
   const maxSpend = Math.max(...customer.spendingByMonth.map((m) => m.amount), 1)
+  const abuse = customer.abuseInfo
 
   return (
     <>
@@ -90,8 +117,151 @@ function CustomerPanel({ customer }: { customer: Customer }) {
           <p className="panel-identity__name">{customer.name}</p>
           <p className="panel-identity__id">{customer.id}</p>
         </div>
-        <StatusPill status={customer.status} tone={statusTone[customer.status]} />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <StatusPill status={customer.status} tone={statusTone[customer.status]} />
+          {abuse?.isFlagged ? (
+            <StatusPill
+              status={
+                abuse.highestSeverity === 'high'
+                  ? 'High Risk'
+                  : abuse.highestSeverity === 'review'
+                    ? 'Review'
+                    : 'Flagged'
+              }
+              tone={
+                abuse.highestSeverity === 'high'
+                  ? 'danger'
+                  : abuse.highestSeverity === 'review'
+                    ? 'review'
+                    : 'warning'
+              }
+            />
+          ) : null}
+        </div>
       </div>
+
+      <UserBlockPanel userId={customer.id} onChanged={onBlockChanged} />
+
+      {abuse && (abuse.isFlagged || abuse.flagId) ? (
+        <Card className={`abuse-card abuse-card--${abuse.highestSeverity || 'warning'}`}>
+          <CardBody>
+            <div className="abuse-card__header">
+              <h3 className="abuse-card__title">
+                <AlertTriangle size={16} strokeWidth={2} />
+                Cancellation Abuse Flag
+              </h3>
+              <StatusPill
+                status={(abuse.highestSeverity || 'warning').toUpperCase()}
+                tone={severityTone[abuse.highestSeverity || 'warning']}
+              />
+            </div>
+            {abuse.ruleLabel ? (
+              <p style={{ margin: '0 0 10px', fontSize: 12.5, fontWeight: 600, color: 'var(--cy-text)' }}>
+                {abuse.ruleLabel}
+              </p>
+            ) : null}
+
+            <div className="abuse-stat-grid">
+              <div className="abuse-stat">
+                <span className="abuse-stat__label">24h Cancels</span>
+                <span className="abuse-stat__val abuse-stat__val--warning">
+                  {abuse.cancellations24h ?? '—'}
+                </span>
+              </div>
+              <div className="abuse-stat">
+                <span className="abuse-stat__label">7d Cancels</span>
+                <span className="abuse-stat__val abuse-stat__val--danger">
+                  {abuse.cancellations7d ?? '—'}
+                </span>
+              </div>
+              <div className="abuse-stat">
+                <span className="abuse-stat__label">30d Rate</span>
+                <span className="abuse-stat__val">
+                  {abuse.cancellationRate ? `${abuse.cancellationRate}%` : '—'}
+                </span>
+              </div>
+              <div className="abuse-stat">
+                <span className="abuse-stat__label">Cust Cancels</span>
+                <span className="abuse-stat__val">{abuse.customerCancellations ?? '—'}</span>
+              </div>
+              <div className="abuse-stat">
+                <span className="abuse-stat__label">Driver Cancels</span>
+                <span className="abuse-stat__val">{abuse.driverCancellations ?? '—'}</span>
+              </div>
+              <div className="abuse-stat">
+                <span className="abuse-stat__label">Completed</span>
+                <span className="abuse-stat__val">{abuse.completedBookings ?? '—'}</span>
+              </div>
+            </div>
+
+            {abuse.adminNotes || abuse.flagStatus ? (
+              <div className="abuse-notes-box">
+                <strong>Flag Status & Review Info</strong>
+                <div>Status: <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{abuse.flagStatus || 'Active'}</span></div>
+                {abuse.adminNotes ? <div style={{ marginTop: 4 }}>Note: {abuse.adminNotes}</div> : null}
+              </div>
+            ) : null}
+
+            {abuse.recentHistory && abuse.recentHistory.length > 0 ? (
+              <div style={{ marginTop: 12 }}>
+                <strong style={{ display: 'block', fontSize: 11, color: 'var(--cy-text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Recent Cancellation Events
+                </strong>
+                <div className="panel-table-wrap">
+                  <table className="panel-table">
+                    <thead>
+                      <tr>
+                        <th>Booking ID</th>
+                        <th>Time</th>
+                        <th>From State</th>
+                        <th>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {abuse.recentHistory.map((ev, i) => (
+                        <tr key={i}>
+                          <td className="panel-table__primary">{ev.booking_id ? ev.booking_id.slice(0, 8) : '—'}</td>
+                          <td>
+                            {ev.cancelled_at
+                              ? new Date(ev.cancelled_at).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '—'}
+                          </td>
+                          <td style={{ fontSize: 11 }}>{ev.from_state}</td>
+                          <td>{ev.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            {abuse.flagId && (abuse.flagStatus === 'active' || !abuse.flagStatus) && onFlagAction ? (
+              <div className="abuse-panel-actions">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => onFlagAction(abuse.flagId!, 'review')}
+                >
+                  <CheckCircle2 size={14} /> Mark Reviewed
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onFlagAction(abuse.flagId!, 'dismiss')}
+                >
+                  <XCircle size={14} /> Dismiss Flag
+                </Button>
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
+      ) : null}
 
       <Card>
         <CardBody>
@@ -109,7 +279,7 @@ function CustomerPanel({ customer }: { customer: Customer }) {
               <div className="panel-field">
                 <span className="panel-field__label">Email</span>
                 <span className="panel-field__value">
-                  <Mail size={13} strokeWidth={1.75} /> {customer.email}
+                  <Mail size={13} strokeWidth={1.75} /> {customer.email || '—'}
                 </span>
               </div>
               <div className="panel-field">
@@ -298,7 +468,7 @@ function CustomerPanel({ customer }: { customer: Customer }) {
             <div className="panel-metrics">
               <div className="panel-metric">
                 <span className="panel-metric__label">Code</span>
-                <strong>{customer.referrals.code}</strong>
+                <strong>{customer.referrals.code || '—'}</strong>
               </div>
               <div className="panel-metric">
                 <span className="panel-metric__label">Invites</span>
@@ -309,30 +479,6 @@ function CustomerPanel({ customer }: { customer: Customer }) {
                 <strong>{formatINR(customer.referrals.earnings)}</strong>
               </div>
             </div>
-            {customer.referrals.recent.length > 0 ? (
-              <div className="panel-table-wrap" style={{ marginTop: 12 }}>
-                <table className="panel-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Date</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customer.referrals.recent.map((ref, i) => (
-                      <tr key={i}>
-                        <td className="panel-table__primary">{ref.name}</td>
-                        <td>{ref.date}</td>
-                        <td>
-                          <StatusPill status={ref.status} tone={slugStatus(ref.status)} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
           </section>
         </CardBody>
       </Card>
@@ -419,16 +565,114 @@ function CustomerPanel({ customer }: { customer: Customer }) {
   )
 }
 
+function flaggedRowToCustomer(row: FlaggedCustomerRow): Customer {
+  return {
+    id: row.customer_id,
+    name: row.customer_name || row.customer_phone,
+    phone: row.customer_phone,
+    email: '',
+    city: row.customer_city || 'Nashik',
+    orders: row.total_bookings,
+    lifetimeSpend: 0,
+    wallet: 0,
+    rating: 4.5,
+    status: (row.customer_status === 'Active' ? 'Active' : 'Inactive') as CustomerStatus,
+    joined: row.created_at ? new Date(row.created_at).toLocaleDateString('en-IN') : '—',
+    initials: (row.customer_name || 'CU').slice(0, 2).toUpperCase(),
+    accent: '#dc2626',
+    addresses: [],
+    complaints: [],
+    referrals: { code: '', invites: 0, successful: 0, earnings: 0, recent: [] },
+    reviews: [],
+    recentOrders: [],
+    activity: [],
+    walletHistory: [],
+    spendingByMonth: [],
+    abuseInfo: {
+      isFlagged: row.status === 'active',
+      activeFlagsCount: row.status === 'active' ? 1 : 0,
+      highestSeverity: row.severity,
+      flagId: row.flag_id,
+      cancellations24h: row.cancellations_24h,
+      cancellations7d: row.cancellations_7d,
+      totalBookings: row.total_bookings,
+      customerCancellations: row.customer_cancellations,
+      driverCancellations: row.driver_cancellations,
+      completedBookings: row.completed_bookings,
+      cancellationRate: row.cancellation_rate,
+      lastCancelledAt: row.last_cancelled_at,
+      ruleLabel: row.rule_label,
+      adminNotes: row.admin_notes,
+      flagStatus: row.status,
+      recentHistory: row.recent_history,
+    },
+  }
+}
+
 export default function Customers() {
+  const { t } = useAdminLanguage()
   const { toast } = useToast()
-  const { data: customers, loading, error } = useAsyncData(fetchCustomers, [])
+
+  // View state: 'all' = all customers, 'flagged' = abuse flags
+  const [activeView, setActiveView] = useState<'all' | 'flagged'>('all')
+
+  // All customers query
+  const { data: customers, loading, error, refetch: refetchCustomers } = useAsyncData(fetchCustomers, [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<(typeof customerStatuses)[number]>('All Status')
   const [cityFilter, setCityFilter] = useState<(typeof customerCities)[number]>(customerCities[0])
   const [page, setPage] = useState(1)
+
+  // Flagged customers state
+  const [flaggedRows, setFlaggedRows] = useState<FlaggedCustomerRow[]>([])
+  const [flaggedLoading, setFlaggedLoading] = useState(false)
+  const [flagStatusFilter, setFlagStatusFilter] = useState<'active' | 'reviewed' | 'resolved' | 'dismissed' | 'all'>('active')
+  const [flagSeverityFilter, setFlagSeverityFilter] = useState<'all' | 'warning' | 'high' | 'review'>('all')
+  const [flagPage, setFlagPage] = useState(1)
+  const [activeFlagCount, setActiveFlagCount] = useState<number>(0)
+
+  // Selected customer & side panel
   const [selected, setSelected] = useState<Customer | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
+  // Confirmation dialog for review/dismiss
+  const [actionConfirm, setActionConfirm] = useState<{
+    open: boolean
+    flagId: string
+    action: 'review' | 'dismiss'
+    customerName: string
+  } | null>(null)
+
+  const loadFlagged = async (statusParam = flagStatusFilter) => {
+    setFlaggedLoading(true)
+    try {
+      const data = await fetchPortalFlaggedCustomers(statusParam)
+      setFlaggedRows(data)
+      if (statusParam === 'active') {
+        setActiveFlagCount(data.length)
+      }
+    } catch {
+      toast({ title: 'Fetch Error', description: 'Could not load flagged customers.', tone: 'error' })
+    } finally {
+      setFlaggedLoading(false)
+    }
+  }
+
+  // Load flagged customers count on mount
+  useEffect(() => {
+    fetchPortalFlaggedCustomers('active')
+      .then((data) => setActiveFlagCount(data.length))
+      .catch(() => {})
+  }, [])
+
+  // When switching to flagged view or changing flag status filter
+  useEffect(() => {
+    if (activeView === 'flagged') {
+      loadFlagged(flagStatusFilter)
+    }
+  }, [activeView, flagStatusFilter])
+
+  // Filtered all customers
   const filtered = useMemo(() => {
     if (!customers) return []
     const q = search.trim().toLowerCase()
@@ -454,21 +698,123 @@ export default function Customers() {
     [filtered, page],
   )
 
+  // Filtered flagged rows
+  const filteredFlagged = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return flaggedRows.filter((row) => {
+      const matchesSearch =
+        !q ||
+        row.customer_name.toLowerCase().includes(q) ||
+        row.customer_phone.toLowerCase().includes(q) ||
+        row.customer_id.toLowerCase().includes(q) ||
+        row.customer_city.toLowerCase().includes(q) ||
+        row.rule_label.toLowerCase().includes(q)
+
+      const matchesSeverity =
+        flagSeverityFilter === 'all' || row.severity === flagSeverityFilter
+
+      return matchesSearch && matchesSeverity
+    })
+  }, [flaggedRows, search, flagSeverityFilter])
+
+  const pagedFlagged = useMemo(
+    () => paginate(filteredFlagged, flagPage, PAGE_SIZE),
+    [filteredFlagged, flagPage],
+  )
+
   const openCustomer = (customer: Customer) => {
     setSelected(customer)
     setPanelOpen(true)
   }
 
+  const openFlaggedCustomer = (row: FlaggedCustomerRow) => {
+    setSelected(flaggedRowToCustomer(row))
+    setPanelOpen(true)
+  }
+
+  const handleFlagActionClick = (flagId: string, action: 'review' | 'dismiss', customerName = 'this customer') => {
+    setActionConfirm({
+      open: true,
+      flagId,
+      action,
+      customerName,
+    })
+  }
+
+  const handleConfirmAction = async (notes?: string) => {
+    if (!actionConfirm) return
+    const { flagId, action, customerName } = actionConfirm
+
+    try {
+      const res = await reviewPortalFlaggedCustomer(flagId, action, notes || '')
+      if (res.success) {
+        toast({
+          title: action === 'review' ? 'Flag Marked as Reviewed' : 'Flag Dismissed',
+          description: `Successfully updated cancellation abuse flag for ${customerName}.`,
+          tone: 'success',
+        })
+        loadFlagged(flagStatusFilter)
+        refetchCustomers()
+        if (selected && selected.abuseInfo?.flagId === flagId) {
+          setSelected((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  abuseInfo: {
+                    ...prev.abuseInfo!,
+                    flagStatus: action === 'review' ? 'reviewed' : 'dismissed',
+                    adminNotes: notes || prev.abuseInfo?.adminNotes || '',
+                  },
+                }
+              : null,
+          )
+        }
+      } else {
+        toast({
+          title: 'Action Failed',
+          description: 'Could not update abuse flag. Please try again.',
+          tone: 'error',
+        })
+      }
+    } catch {
+      toast({
+        title: 'Action Error',
+        description: 'An unexpected error occurred while updating the abuse flag.',
+          tone: 'error',
+      })
+    } finally {
+      setActionConfirm(null)
+    }
+  }
+
   const handleExport = () => {
+    if (activeView === 'flagged') {
+      exportCsv(
+        'carryoo-flagged-customers.csv',
+        [
+          'Flag ID', 'Customer ID', 'Name', 'Phone', 'City', 'Rule',
+          'Severity', 'Status', '24h Cancels', '7d Cancels', '30d Rate', 'Created At',
+        ],
+        filteredFlagged.map((r) => [
+          r.flag_id, r.customer_id, r.customer_name, r.customer_phone, r.customer_city,
+          r.rule_label, r.severity, r.status, r.cancellations_24h, r.cancellations_7d,
+          `${r.cancellation_rate}%`, r.created_at || '—',
+        ]),
+      )
+      toast({ title: 'Export complete', description: `${filteredFlagged.length} flagged records exported.`, tone: 'success' })
+      return
+    }
+
     exportCsv(
       'carryoo-customers.csv',
       [
         'Customer ID', 'Name', 'Phone', 'Email', 'City', 'Orders',
-        'Lifetime Spend', 'Wallet', 'Rating', 'Status', 'Joined',
+        'Lifetime Spend', 'Wallet', 'Rating', 'Status', 'Joined', 'Flagged',
       ],
       filtered.map((c) => [
         c.id, c.name, c.phone, c.email, c.city, c.orders,
         c.lifetimeSpend, c.wallet, c.rating, c.status, c.joined,
+        c.abuseInfo?.isFlagged ? 'Yes' : 'No',
       ]),
     )
     toast({ title: 'Export complete', description: `${filtered.length} customers exported.`, tone: 'success' })
@@ -476,14 +822,20 @@ export default function Customers() {
 
   const clearFilters = () => {
     setSearch('')
-    setStatusFilter('All Status')
-    setCityFilter('All Cities')
-    setPage(1)
+    if (activeView === 'flagged') {
+      setFlagStatusFilter('active')
+      setFlagSeverityFilter('all')
+      setFlagPage(1)
+    } else {
+      setStatusFilter('All Status')
+      setCityFilter('All Cities')
+      setPage(1)
+    }
   }
 
-  if (loading) return <CustomersSkeleton />
+  if (loading && !customers) return <CustomersSkeleton />
 
-  if (error || !customers) {
+  if (error && !customers) {
     return (
       <div className="cy-table-card">
         <EmptyState
@@ -503,8 +855,8 @@ export default function Customers() {
   return (
     <div className="customers-page cy-page">
       <PageHeader
-        title="Customers"
-        subtitle="View and manage customer profiles, wallets, and activity."
+        title={t('pages.customers.title')}
+        subtitle={t('pages.customers.subtitle')}
         crumbs={[
           { label: 'Home', to: '/' },
           { label: 'Customers' },
@@ -517,15 +869,55 @@ export default function Customers() {
         }
       />
 
+      {/* View Switcher: All Customers vs Flagged Customers */}
+      <div className="customers-view-tabs" role="tablist" aria-label="Customer directory view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === 'all'}
+          className={`customers-view-tab ${activeView === 'all' ? 'is-active' : ''}`}
+          onClick={() => {
+            setActiveView('all')
+            setSearch('')
+          }}
+        >
+          <Users size={15} strokeWidth={1.75} />
+          All Customers
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === 'flagged'}
+          className={`customers-view-tab ${activeView === 'flagged' ? 'is-active' : ''}`}
+          onClick={() => {
+            setActiveView('flagged')
+            setSearch('')
+          }}
+        >
+          <ShieldAlert size={15} strokeWidth={1.75} />
+          Flagged for Cancellations
+          {activeFlagCount > 0 ? (
+            <span className="customers-view-tab__badge" title={`${activeFlagCount} active flags`}>
+              {activeFlagCount}
+            </span>
+          ) : null}
+        </button>
+      </div>
+
       <div className="cy-page__toolbar">
         <div className="cy-page__toolbar-left">
           <SearchInput
             value={search}
             onChange={(v) => {
               setSearch(v)
-              setPage(1)
+              if (activeView === 'flagged') setFlagPage(1)
+              else setPage(1)
             }}
-            placeholder="Search by name, ID, phone, email…"
+            placeholder={
+              activeView === 'flagged'
+                ? 'Search flagged customers by name, phone, city, rule…'
+                : 'Search by name, ID, phone, email…'
+            }
             className="customers-search"
             aria-label="Search customers"
           />
@@ -534,32 +926,79 @@ export default function Customers() {
             <span className="cy-page__filters-label">
               <Filter size={14} strokeWidth={1.75} aria-hidden /> Filters
             </span>
-            <select
-              className="cy-select"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as (typeof customerStatuses)[number])
-                setPage(1)
-              }}
-              aria-label="Filter by status"
-            >
-              {customerStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-            <select
-              className="cy-select"
-              value={cityFilter}
-              onChange={(e) => {
-                setCityFilter(e.target.value as (typeof customerCities)[number])
-                setPage(1)
-              }}
-              aria-label="Filter by city"
-            >
-              {customerCities.map((city) => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
+
+            {activeView === 'flagged' ? (
+              <>
+                <select
+                  className="cy-select"
+                  value={flagStatusFilter}
+                  onChange={(e) => {
+                    setFlagStatusFilter(e.target.value as typeof flagStatusFilter)
+                    setFlagPage(1)
+                  }}
+                  aria-label="Filter by flag status"
+                >
+                  <option value="active">Active Flags</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="dismissed">Dismissed</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="all">All Statuses</option>
+                </select>
+
+                <select
+                  className="cy-select"
+                  value={flagSeverityFilter}
+                  onChange={(e) => {
+                    setFlagSeverityFilter(e.target.value as typeof flagSeverityFilter)
+                    setFlagPage(1)
+                  }}
+                  aria-label="Filter by severity"
+                >
+                  <option value="all">All Severities</option>
+                  <option value="warning">Warning</option>
+                  <option value="high">High</option>
+                  <option value="review">Review</option>
+                </select>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => loadFlagged(flagStatusFilter)}
+                  title="Refresh flagged customers"
+                >
+                  <RotateCcw size={14} /> Refresh
+                </Button>
+              </>
+            ) : (
+              <>
+                <select
+                  className="cy-select"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as (typeof customerStatuses)[number])
+                    setPage(1)
+                  }}
+                  aria-label="Filter by status"
+                >
+                  {customerStatuses.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <select
+                  className="cy-select"
+                  value={cityFilter}
+                  onChange={(e) => {
+                    setCityFilter(e.target.value as (typeof customerCities)[number])
+                    setPage(1)
+                  }}
+                  aria-label="Filter by city"
+                >
+                  {customerCities.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         </div>
 
@@ -579,139 +1018,381 @@ export default function Customers() {
       </div>
 
       <div className="cy-page__meta">
-        <span>
-          Showing <strong>{paged.items.length}</strong> of {filtered.length} customers
-          {filtered.length !== customers.length ? ` (${customers.length} total)` : ''}
-        </span>
-      </div>
-
-      <div className="cy-table-card">
-        {filtered.length === 0 ? (
-          <EmptyState
-            icon={<Users size={24} strokeWidth={1.75} />}
-            title="No customers found"
-            description="Try adjusting search or filters to find customers in your network."
-            action={
-              <Button variant="secondary" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            }
-          />
+        {activeView === 'flagged' ? (
+          <span>
+            Showing <strong>{pagedFlagged.items.length}</strong> of {filteredFlagged.length} flagged records
+            {filteredFlagged.length !== flaggedRows.length ? ` (${flaggedRows.length} total)` : ''}
+          </span>
         ) : (
-          <div className="cy-table-wrap">
-            <table className="cy-table customers-table">
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Phone</th>
-                  <th>City</th>
-                  <th>Orders</th>
-                  <th>Lifetime Spend</th>
-                  <th>Wallet</th>
-                  <th>Rating</th>
-                  <th>Status</th>
-                  <th>Joined</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.items.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    className="cy-table__row"
-                    onClick={() => openCustomer(customer)}
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        openCustomer(customer)
-                      }
-                    }}
-                  >
-                    <td>
-                      <div className="customer-cell">
-                        <div
-                          className="customer-cell__avatar"
-                          style={{
-                            background: `${customer.accent}18`,
-                            color: customer.accent,
-                          }}
-                          aria-hidden
-                        >
-                          {customer.initials}
-                        </div>
-                        <div>
-                          <div className="cy-table__primary">{customer.name}</div>
-                          <div className="cy-table__secondary">{customer.id}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>{customer.phone}</td>
-                    <td>{customer.city}</td>
-                    <td className="cy-table__mono">{customer.orders.toLocaleString('en-IN')}</td>
-                    <td className="cy-table__mono customers-spend">
-                      {formatINR(customer.lifetimeSpend)}
-                    </td>
-                    <td className="cy-table__mono customers-wallet">
-                      {formatINR(customer.wallet)}
-                    </td>
-                    <td>
-                      <span className="customer-rating">
-                        <Star size={12} strokeWidth={1.75} fill="#f59e0b" color="#f59e0b" />
-                        {customer.rating.toFixed(1)}
-                      </span>
-                    </td>
-                    <td>
-                      <StatusPill status={customer.status} tone={statusTone[customer.status]} />
-                    </td>
-                    <td>{customer.joined}</td>
-                    <td>
-                      <div className="cy-actions" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="cy-action-btn"
-                          title="View profile"
-                          aria-label={`View ${customer.name}`}
-                          onClick={() => openCustomer(customer)}
-                        >
-                          <Eye size={15} strokeWidth={1.75} />
-                        </button>
-                        <button
-                          type="button"
-                          className="cy-action-btn"
-                          title="More actions"
-                          aria-label={`More actions for ${customer.name}`}
-                        >
-                          <MoreHorizontal size={15} strokeWidth={1.75} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <span>
+            Showing <strong>{paged.items.length}</strong> of {filtered.length} customers
+            {customers && filtered.length !== customers.length ? ` (${customers.length} total)` : ''}
+          </span>
         )}
       </div>
 
-      {filtered.length > 0 ? (
-        <Pagination
-          page={paged.page}
-          totalPages={paged.totalPages}
-          total={paged.total}
-          pageSize={PAGE_SIZE}
-          onPageChange={setPage}
-        />
-      ) : null}
+      {/* TABLE VIEW */}
+      {activeView === 'flagged' ? (
+        <div className="cy-table-card">
+          {flaggedLoading ? (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--cy-text-muted)' }}>
+              Loading flagged customers…
+            </div>
+          ) : filteredFlagged.length === 0 ? (
+            <EmptyState
+              icon={<ShieldAlert size={24} strokeWidth={1.75} />}
+              title="No flagged customers found"
+              description="There are currently no customers exceeding cancellation thresholds under selected filters."
+              action={
+                <Button variant="secondary" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              }
+            />
+          ) : (
+            <div className="cy-table-wrap">
+              <table className="cy-table flagged-table">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    <th>Rule Triggered</th>
+                    <th>Severity</th>
+                    <th>24h Cancels</th>
+                    <th>7d Cancels</th>
+                    <th>30d Rate</th>
+                    <th>Last Cancelled</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedFlagged.items.map((row) => (
+                    <tr
+                      key={row.flag_id}
+                      className="cy-table__row"
+                      onClick={() => openFlaggedCustomer(row)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          openFlaggedCustomer(row)
+                        }
+                      }}
+                    >
+                      <td>
+                        <div className="customer-cell">
+                          <div
+                            className="customer-cell__avatar"
+                            style={{
+                              background: row.severity === 'high' ? '#fee2e2' : '#fef3c7',
+                              color: row.severity === 'high' ? '#dc2626' : '#b45309',
+                            }}
+                            aria-hidden
+                          >
+                            {(row.customer_name || 'CU').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="cy-table__primary">{row.customer_name}</div>
+                            <div className="cy-table__secondary">{row.customer_city || 'Nashik'}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="cy-table__mono">{row.customer_phone}</td>
+                      <td>
+                        <div style={{ maxWidth: 220, fontSize: 12.5, fontWeight: 500 }}>
+                          {row.rule_label}
+                        </div>
+                      </td>
+                      <td>
+                        <StatusPill
+                          status={row.severity.toUpperCase()}
+                          tone={severityTone[row.severity]}
+                        />
+                      </td>
+                      <td className="cy-table__mono">
+                        <span style={{ fontWeight: 700, color: row.cancellations_24h >= 3 ? '#d97706' : 'inherit' }}>
+                          {row.cancellations_24h}
+                        </span>
+                      </td>
+                      <td className="cy-table__mono">
+                        <span style={{ fontWeight: 700, color: row.cancellations_7d >= 5 ? '#dc2626' : 'inherit' }}>
+                          {row.cancellations_7d}
+                        </span>
+                      </td>
+                      <td className="cy-table__mono">
+                        <span>{row.cancellation_rate}%</span>
+                        <span style={{ fontSize: 11, color: 'var(--cy-text-muted)', marginLeft: 4 }}>
+                          ({row.customer_cancellations}/{row.total_bookings})
+                        </span>
+                      </td>
+                      <td>
+                        {row.last_cancelled_at
+                          ? new Date(row.last_cancelled_at).toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—'}
+                      </td>
+                      <td>
+                        <StatusPill
+                          status={row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                          tone={
+                            row.status === 'active'
+                              ? 'active'
+                              : row.status === 'reviewed'
+                                ? 'reviewed'
+                                : row.status === 'dismissed'
+                                  ? 'dismissed'
+                                  : 'resolved'
+                          }
+                        />
+                      </td>
+                      <td>
+                        <div className="cy-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="cy-action-btn"
+                            title="View details"
+                            aria-label={`View ${row.customer_name}`}
+                            onClick={() => openFlaggedCustomer(row)}
+                          >
+                            <Eye size={15} strokeWidth={1.75} />
+                          </button>
+                          {row.status === 'active' ? (
+                            <>
+                              <button
+                                type="button"
+                                className="cy-action-btn"
+                                title="Mark as Reviewed"
+                                aria-label={`Mark ${row.customer_name} reviewed`}
+                                onClick={() => handleFlagActionClick(row.flag_id, 'review', row.customer_name)}
+                              >
+                                <CheckCircle2 size={15} strokeWidth={1.75} color="#059669" />
+                              </button>
+                              <button
+                                type="button"
+                                className="cy-action-btn"
+                                title="Dismiss Flag"
+                                aria-label={`Dismiss flag for ${row.customer_name}`}
+                                onClick={() => handleFlagActionClick(row.flag_id, 'dismiss', row.customer_name)}
+                              >
+                                <XCircle size={15} strokeWidth={1.75} color="#dc2626" />
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="cy-table-card">
+          {filtered.length === 0 ? (
+            <EmptyState
+              icon={<Users size={24} strokeWidth={1.75} />}
+              title="No customers found"
+              description="Try adjusting search or filters to find customers in your network."
+              action={
+                <Button variant="secondary" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              }
+            />
+          ) : (
+            <div className="cy-table-wrap">
+              <table className="cy-table customers-table">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>Orders</th>
+                    <th>Lifetime Spend</th>
+                    <th>Wallet</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.items.map((customer) => (
+                    <tr
+                      key={customer.id}
+                      className="cy-table__row"
+                      onClick={() => openCustomer(customer)}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          openCustomer(customer)
+                        }
+                      }}
+                    >
+                      <td>
+                        <div className="customer-cell">
+                          <div
+                            className="customer-cell__avatar"
+                            style={{
+                              background: `${customer.accent}18`,
+                              color: customer.accent,
+                            }}
+                            aria-hidden
+                          >
+                            {customer.initials}
+                          </div>
+                          <div>
+                            <div className="cy-table__primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {customer.name}
+                              {customer.abuseInfo?.isFlagged ? (
+                                <span title="Excessive cancellation flag active">
+                                  <AlertTriangle size={13} color="#d97706" />
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="cy-table__secondary">{customer.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>{customer.phone}</td>
+                      <td>{customer.city}</td>
+                      <td className="cy-table__mono">{customer.orders.toLocaleString('en-IN')}</td>
+                      <td className="cy-table__mono customers-spend">
+                        {formatINR(customer.lifetimeSpend)}
+                      </td>
+                      <td className="cy-table__mono customers-wallet">
+                        {formatINR(customer.wallet)}
+                      </td>
+                      <td>
+                        <span className="customer-rating">
+                          <Star size={12} strokeWidth={1.75} fill="#f59e0b" color="#f59e0b" />
+                          {customer.rating.toFixed(1)}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <StatusPill status={customer.status} tone={statusTone[customer.status]} />
+                          {customer.abuseInfo?.isFlagged ? (
+                            <StatusPill
+                              status={
+                                customer.abuseInfo.highestSeverity === 'high'
+                                  ? 'High Flag'
+                                  : customer.abuseInfo.highestSeverity === 'review'
+                                    ? 'Review'
+                                    : 'Flagged'
+                              }
+                              tone={
+                                customer.abuseInfo.highestSeverity === 'high'
+                                  ? 'danger'
+                                  : customer.abuseInfo.highestSeverity === 'review'
+                                    ? 'review'
+                                    : 'warning'
+                              }
+                            />
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>{customer.joined}</td>
+                      <td>
+                        <div className="cy-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="cy-action-btn"
+                            title="View profile"
+                            aria-label={`View ${customer.name}`}
+                            onClick={() => openCustomer(customer)}
+                          >
+                            <Eye size={15} strokeWidth={1.75} />
+                          </button>
+                          <button
+                            type="button"
+                            className="cy-action-btn"
+                            title="More actions"
+                            aria-label={`More actions for ${customer.name}`}
+                          >
+                            <MoreHorizontal size={15} strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
+      {/* PAGINATION */}
+      {activeView === 'flagged' ? (
+        filteredFlagged.length > 0 ? (
+          <Pagination
+            page={pagedFlagged.page}
+            totalPages={pagedFlagged.totalPages}
+            total={pagedFlagged.total}
+            pageSize={PAGE_SIZE}
+            onPageChange={setFlagPage}
+          />
+        ) : null
+      ) : (
+        filtered.length > 0 ? (
+          <Pagination
+            page={paged.page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        ) : null
+      )}
+
+      {/* SIDE PANEL */}
       <SidePanel
         open={panelOpen}
         title={selected ? selected.name : 'Customer'}
         onClose={() => setPanelOpen(false)}
-        width={520}
+        width={540}
       >
-        {selected ? <CustomerPanel customer={selected} /> : null}
+        {selected ? (
+          <CustomerPanel
+            customer={selected}
+            onFlagAction={(flagId, action) => handleFlagActionClick(flagId, action, selected.name)}
+            onBlockChanged={(blocked, reason) => {
+              setSelected((current) =>
+                current ? { ...current, status: blocked ? 'Blocked' : 'Active', blockReason: reason } : current,
+              )
+              void refetchCustomers()
+            }}
+          />
+        ) : null}
       </SidePanel>
+
+      {/* CONFIRMATION DIALOG */}
+      {actionConfirm ? (
+        <ConfirmDialog
+          open={actionConfirm.open}
+          title={actionConfirm.action === 'review' ? 'Mark Abuse Flag as Reviewed' : 'Dismiss Abuse Flag'}
+          description={
+            actionConfirm.action === 'review'
+              ? `You are marking the cancellation abuse flag for ${actionConfirm.customerName} as reviewed. You can optionally add notes for your team.`
+              : `You are dismissing the cancellation abuse flag for ${actionConfirm.customerName}. It will no longer appear as active.`
+          }
+          confirmLabel={actionConfirm.action === 'review' ? 'Mark as Reviewed' : 'Dismiss Flag'}
+          tone={actionConfirm.action === 'review' ? 'primary' : 'danger'}
+          withReason={true}
+          reasonLabel="Admin Notes"
+          reasonPlaceholder="Enter resolution notes, customer contact outcome, or reason for dismissal…"
+          onConfirm={handleConfirmAction}
+          onClose={() => setActionConfirm(null)}
+        />
+      ) : null}
     </div>
   )
 }

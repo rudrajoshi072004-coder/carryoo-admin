@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Download, Eye, Filter, Package } from 'lucide-react'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { SidePanel } from '../components/ConfirmDialog'
@@ -14,11 +15,17 @@ import { listBookings } from '../api/services/bookings'
 import { listVehicleCategories } from '../api/services/vehicleCategories'
 import type { Booking } from '../api/types'
 import { exportCsv, paginate } from '../lib/utils'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import './Orders.css'
 
 const PAGE_SIZE = 12
 
-const STATUS_FILTERS = ['All Status', 'searching', 'assigned', 'in_transit', 'completed', 'cancelled_by_customer', 'cancelled_by_driver'] as const
+const STATUS_FILTERS = ['All Status', 'searching', 'assigned', 'in_transit', 'completed', 'cancelled_by_customer', 'cancelled_by_driver', 'failed'] as const
+
+function isMissedBooking(state: string) {
+  const normalized = state.toLowerCase()
+  return normalized === 'failed' || normalized.includes('no_driver') || normalized.includes('missed')
+}
 
 function formatFare(amount?: string) {
   const n = Number.parseFloat(amount ?? '0')
@@ -27,7 +34,17 @@ function formatFare(amount?: string) {
 }
 
 function formatState(state: string) {
+  if (isMissedBooking(state)) return 'Missed'
   return state.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function initialStatusFilter(params: URLSearchParams): (typeof STATUS_FILTERS)[number] {
+  const raw = params.get('status')
+  if (raw === 'missed' || raw === 'failed') return 'failed'
+  if (raw && STATUS_FILTERS.includes(raw as (typeof STATUS_FILTERS)[number])) {
+    return raw as (typeof STATUS_FILTERS)[number]
+  }
+  return 'All Status'
 }
 
 function formatDate(iso: string) {
@@ -42,7 +59,7 @@ function formatDate(iso: string) {
 
 async function fetchOrdersData() {
   const [bookings, categories] = await Promise.all([
-    listBookings({ page_size: 100 }),
+    listBookings({ page_size: 200 }),
     listVehicleCategories(),
   ])
   const categoryNames = new Map(categories.map((c) => [c.id, c.name]))
@@ -62,9 +79,11 @@ function OrdersSkeleton() {
 }
 
 export default function Orders() {
+  const { t } = useAdminLanguage()
+  const [params] = useSearchParams()
   const { data, loading, error, refetch } = useAsyncData(fetchOrdersData, [])
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>('All Status')
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>(() => initialStatusFilter(params))
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Booking | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -81,7 +100,10 @@ export default function Orders() {
         order.customer_phone?.toLowerCase().includes(q) ||
         order.pickup_address_text.toLowerCase().includes(q) ||
         order.drop_address_text.toLowerCase().includes(q)
-      const matchesStatus = statusFilter === 'All Status' || order.state === statusFilter
+      const matchesStatus =
+        statusFilter === 'All Status' ||
+        (statusFilter === 'failed' && isMissedBooking(order.state)) ||
+        order.state === statusFilter
       return matchesSearch && matchesStatus
     })
   }, [bookings, search, statusFilter])
@@ -127,9 +149,9 @@ export default function Orders() {
   return (
     <div className="orders-page cy-page">
       <PageHeader
-        title="Orders"
-        subtitle="Live bookings from the Carryoo platform."
-        crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Orders' }]}
+        title={t('pages.orders.title')}
+        subtitle={t('pages.orders.subtitle')}
+        crumbs={[{ label: t('dashboard'), to: '/' }, { label: t('orders') }]}
         actions={
           <Button variant="secondary" onClick={handleExport}>
             <Download size={16} strokeWidth={1.75} />
@@ -198,7 +220,7 @@ export default function Orders() {
                       </td>
                       <td>{order.vehicle_category ? categoryNames.get(order.vehicle_category) ?? '—' : '—'}</td>
                       <td className="cy-table__mono">{formatFare(order.estimated_fare)}</td>
-                      <td><StatusPill status={formatState(order.state)} tone={order.state.includes('cancel') ? 'cancelled' : order.state} /></td>
+                      <td><StatusPill status={formatState(order.state)} tone={isMissedBooking(order.state) ? 'failed' : order.state.includes('cancel') ? 'cancelled' : order.state} /></td>
                       <td className="cy-table__secondary">{formatDate(order.created_at)}</td>
                       <td>
                         <button type="button" className="cy-action-btn" onClick={(e) => { e.stopPropagation(); openOrder(order) }}>

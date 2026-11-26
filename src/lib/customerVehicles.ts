@@ -23,6 +23,21 @@ export function customerVehicleLabel(name: string): string {
   return CUSTOMER_APP_LABELS[slug as CustomerAppVehicleSlug] ?? name
 }
 
+export const CUSTOMER_APP_VEHICLE_FILTERS = [
+  'All Vehicles',
+  '2 Wheeler',
+  'Scooty',
+  '3 Wheeler',
+  'Tata ACE',
+] as const
+
+export type CustomerAppVehicleFilter = (typeof CUSTOMER_APP_VEHICLE_FILTERS)[number]
+
+export function matchesCustomerVehicleFilter(vehicleType: string, filter: string): boolean {
+  if (filter === 'All Vehicles') return true
+  return customerVehicleLabel(vehicleType) === filter
+}
+
 export function customerVehicleSortKey(name: string): number {
   const idx = CUSTOMER_APP_VEHICLE_SLUGS.indexOf(customerVehicleSlug(name) as CustomerAppVehicleSlug)
   return idx >= 0 ? idx : 999

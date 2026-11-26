@@ -21,6 +21,7 @@ import {
   YAxis,
 } from 'recharts'
 import KpiCard from '../components/KpiCard'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import { PageHeader, Pagination } from '../components/PageHeader'
 import { SidePanel } from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
@@ -76,6 +77,7 @@ function WalletSkeleton() {
 }
 
 export default function WalletPage() {
+  const { t } = useAdminLanguage()
   const { data, loading, error } = useAsyncData(fetchWallet, [])
   const { toast } = useToast()
   const [page, setPage] = useState(1)
@@ -116,7 +118,7 @@ export default function WalletPage() {
   return (
     <div className="wallet cy-page">
       <PageHeader
-        title="Wallet"
+        title={t('pages.wallet.title')}
         subtitle={`Platform wallet balance ${formatINRCompact(summary.balance)} · Credits, debits & payouts`}
         crumbs={[
           { label: 'Dashboard', to: '/' },

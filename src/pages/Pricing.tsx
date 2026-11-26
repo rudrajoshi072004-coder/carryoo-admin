@@ -5,6 +5,7 @@ import { PageHeader } from '../components/PageHeader'
 import { Button, Card, CardBody, CardHeader, EmptyState, Skeleton } from '../components/ui'
 import { PermissionBanner } from '../components/PermissionBanner'
 import { useToast } from '../components/Toast'
+import { useAdminLanguage } from '../i18n/LanguageContext'
 import { useAuth } from '../context/AuthContext'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { getApiErrorMessage } from '../api/client'
@@ -276,6 +277,7 @@ function RateInputs({
 }
 
 export default function Pricing() {
+  const { t } = useAdminLanguage()
   const { isAdmin, user } = useAuth()
   const { toast } = useToast()
   const canEdit = isAdmin
@@ -545,8 +547,8 @@ export default function Pricing() {
   return (
     <div className="pricing-page cy-page">
       <PageHeader
-        title="Pricing"
-        subtitle="Configure base fare radius, per-km rates, and outstation distance thresholds for customer fare quotes."
+        title={t('pages.pricing.title')}
+        subtitle={t('pages.pricing.subtitle')}
         crumbs={[{ label: 'Dashboard', to: '/' }, { label: 'Pricing' }]}
       />
 
